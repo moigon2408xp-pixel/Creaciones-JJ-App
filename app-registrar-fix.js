@@ -153,6 +153,19 @@ function safeParseDate(value) {
   
   if (str.includes(" - ")) str = str.split(" - ")[0];
   if (str.includes(" a las ")) str = str.split(" a las ")[0];
+
+  // Limpiar sufijos entre paréntesis como "(hora de Venezuela)" o "(GMT-4)"
+  str = str.replace(/\s*\([^)]*\)/g, "").trim();
+
+  // 0. Si viene como YYYY-MM-DD simple (evita desfase UTC de medianoche)
+  const ymdOnly = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (ymdOnly) {
+    const y = parseInt(ymdOnly[1], 10);
+    const m = parseInt(ymdOnly[2], 10) - 1;
+    const d = parseInt(ymdOnly[3], 10);
+    const parsed = new Date(y, m, d, 12, 0, 0);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
   
   // 1. Si viene como ISO (ej: 2026-09-04T13:00:00 o 2026-09-04T13:00:00.000Z)
   if (str.includes("T")) {
@@ -162,7 +175,7 @@ function safeParseDate(value) {
       const year = parseInt(dateParts[0], 10);
       const month = parseInt(dateParts[1], 10) - 1;
       const day = parseInt(dateParts[2], 10);
-      let hours = 18;
+      let hours = 12;
       let minutes = 0;
       if (parts[1]) {
         const timeParts = parts[1].split(":");
@@ -183,7 +196,7 @@ function safeParseDate(value) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
-      let hours = 18;
+      let hours = 12;
       let minutes = 0;
       const timeMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
       if (timeMatch) {
@@ -198,8 +211,22 @@ function safeParseDate(value) {
     }
   }
   
+  // 3. Parser estándar tras haber quitado los paréntesis
   const d = new Date(str);
-  return isNaN(d.getTime()) ? null : d;
+  if (!isNaN(d.getTime())) return d;
+
+  // 4. Si viene con nombres de meses en inglés como "Wed Sep 23 2026 20:00:00 GMT-0400"
+  const monMatch = str.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})\s+(\d{4})/i);
+  if (monMatch) {
+    const months = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+    const m = months[monMatch[1].toLowerCase().slice(0, 3)];
+    const day = parseInt(monMatch[2], 10);
+    const year = parseInt(monMatch[3], 10);
+    const parsed = new Date(year, m, day, 12, 0, 0);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  
+  return null;
 }
 
 function formatDate(value) {
@@ -223,7 +250,10 @@ function formatDate(value) {
 function formatSimpleDate(value) {
   if (!value) return 'N/A';
   const date = safeParseDate(value);
-  if (!date) return String(value);
+  if (!date) {
+    let clean = String(value).replace(/\s*\([^)]*\)/g, "").trim();
+    return clean || 'N/A';
+  }
   const day = date.getDate().toString().padStart(2, '0');
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const year = date.getFullYear();
@@ -414,7 +444,7 @@ const canAccessScreen = (screen) => {
 };
 const isPausedProductionStatus = (est) => {
   const s = String(est || "").toLowerCase().trim();
-  return s === "pausado" || s === "esperando imprenta" || s === "esperando planchado";
+  return s === "pausado" || s === "esperando imprenta" || s === "esperando planchado" || s === "en espera de planchado" || s === "en espera de imprenta";
 };
 const productionStatusList = (includeEntregado) => {
   const list = ["Pendiente", "En proceso", "Pausado", "Esperando Imprenta", "Esperando Planchado", "Terminado"];
@@ -3823,19 +3853,37 @@ function detail(order) {
       openFinishModal(order, val);
     } else {
       let pauseNote = "";
-      const isPauseStatus = ["Pausado", "Esperando Imprenta", "Esperando Planchado"].includes(val);
+      const isPauseStatus = isPausedProductionStatus(val);
       
-      if (isPauseStatus) {
-        pauseNote = prompt("Motivo del cambio de estado (ej: Esperando material, respuesta del cliente, enviado a imprenta, esperando planchado...):");
-        if (pauseNote === null) return;
+      // Solo para 'Pausado' se solicita motivo al usuario.
+      // Para 'Esperando Imprenta' y 'Esperando Planchado' NO se pide motivo repetitivo,
+      // se asigna automáticamente la nota descriptiva y se congela el tiempo.
+      if (val === "Pausado") {
+        pauseNote = prompt("Motivo de la pausa (ej: Falta de material, corte de luz, etc.):");
+        if (pauseNote === null) {
+          e.target.value = order.estado;
+          return;
+        }
+        pauseNote = pauseNote.trim() || "Pausa de producción";
+      } else if (val === "Esperando Imprenta") {
+        pauseNote = "En espera de imprenta";
+      } else if (val === "Esperando Planchado") {
+        pauseNote = "En espera de planchado";
       }
       
       try {
+        const nowIso = new Date().toISOString();
         const changes = { estado: val, nota: pauseNote };
         
         // Si es un estado de pausa, registrar el momento de la pausa
         if (isPauseStatus) {
-          changes.ultimaPausa = new Date().toISOString();
+          changes.ultimaPausa = nowIso;
+          order.ultimaPausa = nowIso;
+        }
+        order.estado = val;
+        if (state.selectedOrder && state.selectedOrder.id === order.id) {
+          state.selectedOrder.estado = val;
+          if (isPauseStatus) state.selectedOrder.ultimaPausa = nowIso;
         }
         
         await api("profile_update_order", {
@@ -8297,6 +8345,101 @@ window.addStandardSubItem = function(tipo, cant, det) {
 // =========================================================================
 // MÓDULO 1: PROVEEDORES Y CUENTAS POR PAGAR (EXCLUSIVO GERENCIA / JEFES)
 // =========================================================================
+
+// Helper de tipificación y cálculo de estado de vencimiento de notas de proveedor
+function getProviderInvoiceStatus(inv, now = new Date()) {
+  const saldo = Number(inv.saldoPendiente || 0);
+  const total = Number(inv.montoTotal || 0);
+  const abonado = Number(inv.abonado || 0);
+  const isPaid = saldo <= 0.01;
+  const isParcial = abonado > 0 && !isPaid;
+
+  const vDate = safeParseDate(inv.fechaVencimiento);
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth();
+  const nowDay = now.getDate();
+  const todayStart = new Date(nowYear, nowMonth, nowDay, 0, 0, 0).getTime();
+  const todayEnd = new Date(nowYear, nowMonth, nowDay, 23, 59, 59, 999).getTime();
+
+  let isOverdue = false;
+  let isDueToday = false;
+  let isUpcoming = false;
+  let diasVencido = 0;
+  let diasParaVencer = 0;
+
+  if (vDate && !isPaid) {
+    const vTime = vDate.getTime();
+    if (vTime < todayStart) {
+      isOverdue = true;
+      diasVencido = Math.max(1, Math.ceil((todayStart - vTime) / 86400000));
+    } else if (vTime <= todayEnd) {
+      isDueToday = true;
+    } else {
+      diasParaVencer = Math.max(1, Math.ceil((vTime - todayEnd) / 86400000));
+      if (diasParaVencer <= 5) isUpcoming = true;
+    }
+  }
+
+  // Deducción limpia de fecha de registro
+  let fRegistro = inv.fechaRegistro;
+  if (!fRegistro) {
+    if (inv.id && String(inv.id).startsWith("PROV-")) {
+      const ts = Number(String(inv.id).replace("PROV-", ""));
+      if (!isNaN(ts) && ts > 1600000000000) {
+        fRegistro = new Date(ts).toISOString().split("T")[0];
+      }
+    }
+    if (!fRegistro) fRegistro = inv.fechaEntrega || new Date().toISOString().split("T")[0];
+  }
+
+  const fVenceClean = formatSimpleDate(inv.fechaVencimiento) || "Inmediato";
+  const fEntregaClean = formatSimpleDate(inv.fechaEntrega);
+  const fRegistroClean = formatSimpleDate(fRegistro);
+
+  // Formato de moneda
+  const isVES = String(inv.moneda || "").toUpperCase() === "VES" || String(inv.moneda || "").toUpperCase() === "BS";
+  const currencySymbol = isVES ? "Bs." : "$";
+
+  let badgeClass = "prov-badge-pending";
+  let badgeText = "⏳ Pendiente";
+  if (isPaid) {
+    badgeClass = "prov-badge-paid";
+    badgeText = "✅ Pagada";
+  } else if (isOverdue) {
+    badgeClass = "prov-badge-overdue";
+    badgeText = `⚠️ VENCIDA (${diasVencido} d)`;
+  } else if (isDueToday) {
+    badgeClass = "prov-badge-today";
+    badgeText = "⏰ Vence Hoy";
+  } else if (isUpcoming) {
+    badgeClass = "prov-badge-upcoming";
+    badgeText = `⏳ Vence en ${diasParaVencer} d`;
+  } else if (isParcial) {
+    badgeClass = "prov-badge-partial";
+    badgeText = "🟡 Abono Parcial";
+  }
+
+  return {
+    saldo,
+    total,
+    abonado,
+    isPaid,
+    isParcial,
+    isOverdue,
+    isDueToday,
+    isUpcoming,
+    diasVencido,
+    diasParaVencer,
+    fVenceClean,
+    fEntregaClean,
+    fRegistroClean,
+    isVES,
+    currencySymbol,
+    badgeClass,
+    badgeText,
+    vDate
+  };
+}
 function getStoredProvidersData() {
   if (state.data?.providerInvoices && Array.isArray(state.data.providerInvoices) && state.data.providerInvoices.length > 0) {
     return state.data.providerInvoices;
@@ -8339,126 +8482,254 @@ window.downloadProvidersReport = function() {
   const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
   
   if (invoices.length === 0) {
-    alert("No hay notas de entrega para descargar.");
+    alert("No hay notas de entrega para generar reporte.");
     return;
   }
 
-  // Generar HTML para imprimir
+  const now = new Date();
+  const dateEmissionStr = now.toLocaleDateString('es-VE') + ' ' + now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // Procesar y tipificar cada nota
+  const processed = invoices.map(inv => {
+    const st = getProviderInvoiceStatus(inv, now);
+    return { inv, st };
+  });
+
+  // Ordenar con prioridad: Primero VENCIDAS (de mayor a menor días de mora), luego Por Vencer, luego Pendientes, luego Pagadas
+  processed.sort((a, b) => {
+    if (a.st.isOverdue && !b.st.isOverdue) return -1;
+    if (!a.st.isOverdue && b.st.isOverdue) return 1;
+    if (a.st.isOverdue && b.st.isOverdue) return b.st.diasVencido - a.st.diasVencido;
+    if (a.st.isUpcoming && !b.st.isUpcoming) return -1;
+    if (!a.st.isUpcoming && b.st.isUpcoming) return 1;
+    if (!a.st.isPaid && b.st.isPaid) return -1;
+    if (a.st.isPaid && !b.st.isPaid) return 1;
+    return 0;
+  });
+
+  // Totales segregados
+  let totalUSD = 0;
+  let totalVES = 0;
+  let totalAbonadoUSD = 0;
+  let totalAbonadoVES = 0;
+  let vencidasCount = 0;
+  let pendientesCount = 0;
+
+  processed.forEach(({ inv, st }) => {
+    if (st.isVES) {
+      totalVES += st.saldo;
+      totalAbonadoVES += st.abonado;
+    } else {
+      totalUSD += st.saldo;
+      totalAbonadoUSD += st.abonado;
+    }
+    if (st.isOverdue) vencidasCount++;
+    if (!st.isPaid) pendientesCount++;
+  });
+
+  // Generar HTML optimizado para imprimir (Letter / Horizontal / Vertical con alto contraste)
   const printHTML = `
     <!DOCTYPE html>
-    <html>
+    <html lang="es">
     <head>
-      <title>Reporte de Cuentas por Pagar - Creaciones JJ</title>
+      <meta charset="UTF-8">
+      <title>Reporte de Notas de Entrega y Cuentas por Pagar - Creaciones JJ</title>
       <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        h1 { color: #10b981; text-align: center; }
-        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #10b981; padding-bottom: 10px; }
-        .summary { background: #f0fdf4; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .summary h2 { margin: 0 0 10px 0; color: #059669; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
-        th { background: #10b981; color: white; }
-        .vencida { background: #fef2f2; }
-        .proxima { background: #fffbeb; }
-        .al-dia { background: #f0fdf4; }
-        .total-row { font-weight: bold; background: #10b981; color: white; }
-        .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #6b7280; }
+        @page { size: landscape; margin: 12mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', -apple-system, Arial, sans-serif; padding: 15px; color: #111827; background: #fff; font-size: 11px; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #10b981; padding-bottom: 10px; margin-bottom: 12px; }
+        .header-title h1 { margin: 0 0 4px 0; font-size: 18px; color: #065f46; letter-spacing: 0.5px; }
+        .header-title h2 { margin: 0 0 4px 0; font-size: 13px; color: #047857; font-weight: 600; }
+        .header-title p { margin: 0; font-size: 10.5px; color: #6b7280; }
+        .header-meta { text-align: right; font-size: 10.5px; color: #374151; }
+        
+        .kpi-container { display: flex; gap: 12px; margin-bottom: 14px; }
+        .kpi-box { flex: 1; border: 1.5px solid #e5e7eb; border-radius: 6px; padding: 8px 12px; background: #f9fafb; }
+        .kpi-box.danger { border-color: #ef4444; background: #fef2f2; }
+        .kpi-box.success { border-color: #10b981; background: #f0fdf4; }
+        .kpi-label { font-size: 9.5px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+        .kpi-value { font-size: 18px; font-weight: 900; margin: 2px 0; }
+        .kpi-sub { font-size: 9.5px; color: #6b7280; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        th, td { border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; vertical-align: middle; }
+        th { background: #f3f4f6; color: #111827; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+        
+        tr.row-vencida { background: #fff1f2; }
+        tr.row-proxima { background: #fffbeb; }
+        tr.row-pagada { background: #f0fdf4; color: #6b7280; }
+        
+        .tag-vencida { background: #ef4444; color: #fff; font-weight: 800; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+        .tag-proxima { background: #f59e0b; color: #fff; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+        .tag-abono { background: #0284c7; color: #fff; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+        .tag-pendiente { background: #e5e7eb; color: #374151; font-weight: 600; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+        .tag-pagada { background: #10b981; color: #fff; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
+
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .total-row { font-weight: 900; background: #e5e7eb; font-size: 11.5px; }
+        
+        .signatures { display: flex; justify-content: space-between; margin-top: 35px; page-break-inside: avoid; }
+        .sign-box { width: 28%; border-top: 1px solid #9ca3af; text-align: center; padding-top: 6px; font-size: 10px; color: #4b5563; }
+        .notice { font-size: 9.5px; color: #6b7280; margin-top: 15px; border-left: 3px solid #10b981; padding-left: 8px; }
+
+        @media print {
+          body { padding: 0; }
+          .no-print { display: none; }
+        }
       </style>
     </head>
     <body>
       <div class="header">
-        <h1>📊 REPORTE DE CUENTAS POR PAGAR</h1>
-        <h2>Creaciones JJ - Taller Ochoa & Risquez</h2>
-        <p>Fecha: ${new Date().toLocaleDateString('es-VE')}</p>
+        <div class="header-title">
+          <h1>CREACIONES JJ · TALLER OCHOA &amp; RISQUEZ</h1>
+          <h2>CONTROL FÍSICO DE NOTAS DE ENTREGA Y CUENTAS POR PAGAR</h2>
+          <p>Consolidado general para archivo en carpeta física de compras y proveedores.</p>
+        </div>
+        <div class="header-meta">
+          <div><strong>Fecha Emisión:</strong> ${dateEmissionStr}</div>
+          <div><strong>Total Registros:</strong> ${invoices.length} nota(s)</div>
+          <div><strong>Tasa Referencial BCV:</strong> Bs. ${currentTasa.toFixed(2)}</div>
+        </div>
       </div>
 
-      <div class="summary">
-        <h2>📈 Resumen</h2>
-        <p><strong>Total Deuda Pendiente:</strong> $${invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0).toFixed(2)} USD</p>
-        <p><strong>Total Notas:</strong> ${invoices.length}</p>
+      <div class="kpi-container">
+        <div class="kpi-box success">
+          <div class="kpi-label">Deuda Pendiente en Dólares ($)</div>
+          <div class="kpi-value" style="color:#059669;">$${totalUSD.toFixed(2)} USD</div>
+          <div class="kpi-sub">Total acumulado a liquidar en divisas</div>
+        </div>
+        ${totalVES > 0 ? `
+          <div class="kpi-box">
+            <div class="kpi-label">Deuda Fija en Bolívares (Bs.)</div>
+            <div class="kpi-value" style="color:#0284c7;">Bs. ${totalVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div class="kpi-sub">Notas fijadas netamente en bolívares</div>
+          </div>
+        ` : ''}
+        <div class="kpi-box ${vencidasCount > 0 ? 'danger' : ''}">
+          <div class="kpi-label">Notas Vencidas (Acción Inmediata)</div>
+          <div class="kpi-value" style="color:${vencidasCount > 0 ? '#dc2626' : '#111827'};">${vencidasCount}</div>
+          <div class="kpi-sub">${vencidasCount > 0 ? '⚠️ Prioridad máxima de pago' : 'Cero deudas vencidas'}</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-label">Total Notas Pendientes</div>
+          <div class="kpi-value" style="color:#2563eb;">${pendientesCount} / ${invoices.length}</div>
+          <div class="kpi-sub">Notas activas por liquidar</div>
+        </div>
       </div>
 
       <table>
         <thead>
           <tr>
-            <th>Proveedor</th>
-            <th>Nota #</th>
-            <th>Fecha Registro</th>
-            <th>Fecha Nota</th>
-            <th>Fecha Vencimiento</th>
-            <th>Fecha Entrega Pedido</th>
-            <th>Cumpliente</th>
-            <th>Monto Total (USD)</th>
-            <th>Abonado (USD)</th>
-            <th>Saldo Pendiente (USD)</th>
-            <th>Estado</th>
-            <th>Días Vencido</th>
+            <th style="width:20%;">Proveedor</th>
+            <th style="width:11%;">N° Nota / Fac</th>
+            <th style="width:9%;">Recepción Local</th>
+            <th style="width:9%;">Registro</th>
+            <th style="width:9%;">Vencimiento</th>
+            <th style="width:7%;" class="text-center">Moneda</th>
+            <th style="width:9%;" class="text-right">Monto Total</th>
+            <th style="width:8%;" class="text-right">Abonado</th>
+            <th style="width:9%;" class="text-right">Saldo Pendiente</th>
+            <th style="width:9%;" class="text-center">Estado</th>
           </tr>
         </thead>
         <tbody>
-          ${invoices.map(inv => {
-            const saldo = Number(inv.saldoPendiente || 0);
-            const vencimientoDate = safeParseDate(inv.fechaVencimiento);
-            const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
-            const today = new Date();
-            const todayStr = today.toISOString().split('T')[0];
-            const isVencida = vencimientoStr && vencimientoStr < todayStr;
-            
-            // Calcular días vencido
-            let diasVencido = 0;
-            if (isVencida && vencimientoDate) {
-              const diffTime = today.getTime() - vencimientoDate.getTime();
-              diasVencido = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          ${processed.map(({ inv, st }) => {
+            let rowClass = '';
+            let tagHTML = '';
+            if (st.isPaid) {
+              rowClass = 'row-pagada';
+              tagHTML = '<span class="tag-pagada">PAGADA</span>';
+            } else if (st.isOverdue) {
+              rowClass = 'row-vencida';
+              tagHTML = `<span class="tag-vencida">VENCIDA (${st.diasVencido} d)</span>`;
+            } else if (st.isDueToday) {
+              rowClass = 'row-proxima';
+              tagHTML = '<span class="tag-proxima">VENCE HOY</span>';
+            } else if (st.isUpcoming) {
+              rowClass = 'row-proxima';
+              tagHTML = `<span class="tag-proxima">EN ${st.diasParaVencer} DÍAS</span>`;
+            } else if (st.isParcial) {
+              tagHTML = '<span class="tag-abono">ABONO PARCIAL</span>';
+            } else {
+              tagHTML = '<span class="tag-pendiente">PENDIENTE</span>';
             }
-            
-            const rowClass = isVencida ? 'vencida' : (vencimientoStr === todayStr ? 'al-dia' : 'proxima');
-            
+
+            const sym = st.currencySymbol;
             return `
               <tr class="${rowClass}">
-                <td>${escapeHtml(inv.proveedor || 'N/A')}</td>
-                <td>${escapeHtml(inv.numeroNota || 'N/A')}</td>
-                <td>${formatSimpleDate(inv.fechaRegistro || inv.fechaNota)}</td>
-                <td>${formatSimpleDate(inv.fechaNota)}</td>
-                <td>${formatSimpleDate(inv.fechaVencimiento) || 'No especificado'}</td>
-                <td>${formatSimpleDate(inv.fechaEntregaPedido)}</td>
-                <td>${escapeHtml(inv.cumpliente || 'N/A')}</td>
-                <td>$${Number(inv.montoTotal || 0).toFixed(2)}</td>
-                <td>$${Number(inv.abonado || 0).toFixed(2)}</td>
-                <td><strong>$${saldo.toFixed(2)}</strong></td>
-                <td>${isVencida ? '⚠️ VENCIDA' : (vencimientoStr === todayStr ? '✅ VENCE HOY' : '📅 Próxima')}</td>
-                <td>${isVencida ? `<strong style="color:#ef4444;">${diasVencido} días</strong>` : '-'}</td>
+                <td>
+                  <strong>${escapeHtml(inv.proveedor || 'Sin Proveedor')}</strong>
+                  ${inv.notas ? `<div style="font-size:9.5px; color:#4b5563; margin-top:2px;">${escapeHtml(inv.notas)}</div>` : ''}
+                </td>
+                <td style="font-family:monospace; font-weight:bold; color:#0369a1;">${escapeHtml(inv.numeroNota || 'S/N')}</td>
+                <td>${escapeHtml(st.fEntregaClean)}</td>
+                <td>${escapeHtml(st.fRegistroClean)}</td>
+                <td style="font-weight:${st.isOverdue ? 'bold' : 'normal'}; color:${st.isOverdue ? '#dc2626' : 'inherit'};">
+                  ${escapeHtml(st.fVenceClean)}
+                </td>
+                <td class="text-center"><strong>${st.isVES ? 'Bs VES' : '$ USD'}</strong></td>
+                <td class="text-right">${sym} ${Number(st.total).toFixed(2)}</td>
+                <td class="text-right" style="color:#059669;">${sym} ${Number(st.abonado).toFixed(2)}</td>
+                <td class="text-right" style="font-weight:bold; color:${st.saldo > 0 ? (st.isOverdue ? '#dc2626' : '#d97706') : '#059669'};">
+                  ${sym} ${Number(st.saldo).toFixed(2)}
+                </td>
+                <td class="text-center">${tagHTML}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
         <tfoot>
           <tr class="total-row">
-            <td colspan="9" style="text-align: right;">TOTAL GENERAL:</td>
-            <td>$${invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0).toFixed(2)}</td>
-            <td colspan="2"></td>
+            <td colspan="6" class="text-right">TOTAL PENDIENTE EN DÓLARES ($ USD):</td>
+            <td colspan="4" class="text-right" style="color:#059669; font-size:12px;">$${totalUSD.toFixed(2)} USD</td>
           </tr>
+          ${totalVES > 0 ? `
+            <tr class="total-row">
+              <td colspan="6" class="text-right">TOTAL PENDIENTE EN BOLÍVARES (Bs. VES):</td>
+              <td colspan="4" class="text-right" style="color:#0284c7; font-size:12px;">Bs. ${totalVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          ` : ''}
         </tfoot>
       </table>
 
-      <div class="footer">
-        <p>Generado automáticamente por el Sistema de Gestión Creaciones JJ</p>
-        <p>Este reporte es para uso interno y control de cuentas por pagar</p>
+      <div class="notice">
+        <strong>Nota de Administración:</strong> Los montos fijados en dólares se pagan y liquidan exclusivamente en divisas americanas o su equivalente a tasa acordada al momento del pago. Las notas marcadas como <em>VENCIDAS</em> tienen prioridad absoluta de desembolso para mantener las líneas de crédito abiertas con los proveedores del taller.
+      </div>
+
+      <div class="signatures">
+        <div class="sign-box">
+          <strong>Elaborado por</strong><br>
+          Administración Creaciones JJ
+        </div>
+        <div class="sign-box">
+          <strong>Revisado por</strong><br>
+          Gerencia / Sr. Ochoa / Sra. Rísquez
+        </div>
+        <div class="sign-box">
+          <strong>Recibido para Pago</strong><br>
+          Firma y Fecha de Liquidación
+        </div>
       </div>
     </body>
     </html>
   `;
 
-  // Abrir en nueva ventana para imprimir
   const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert("Por favor permite las ventanas emergentes (pop-ups) en tu navegador para imprimir el reporte.");
+    return;
+  }
   printWindow.document.write(printHTML);
   printWindow.document.close();
   
-  // Esperar a que cargue y mostrar diálogo de impresión
   setTimeout(() => {
+    printWindow.focus();
     printWindow.print();
   }, 500);
   
-  showToast("📄 Reporte generado. Se abrirá el diálogo de impresión.");
+  showToast("📄 Reporte físico generado. Se abrió el diálogo de impresión.");
 };
 
 function saveProviderList(list) {
@@ -8473,35 +8744,35 @@ function providersView() {
   const invoices = getStoredProvidersData();
   const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
 
-  // KPIs
+  // KPIs con tipificación precisa
   let totalDeudaUSD = 0;
+  let totalDeudaVES = 0;
   let totalAbonadoUSD = 0;
+  let totalAbonadoVES = 0;
   let vencidasCount = 0;
   let proximasCount = 0;
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
 
   invoices.forEach(inv => {
-    const saldo = Number(inv.saldoPendiente || 0);
-    const monto = Number(inv.montoTotal || 0);
-    const abon = Number(inv.abonado || 0);
-    totalDeudaUSD += saldo;
-    totalAbonadoUSD += abon;
+    const st = getProviderInvoiceStatus(inv, now);
+    if (st.isVES) {
+      totalDeudaVES += st.saldo;
+      totalAbonadoVES += st.abonado;
+    } else {
+      totalDeudaUSD += st.saldo;
+      totalAbonadoUSD += st.abonado;
+    }
 
-    if (saldo > 0.01) {
-      const vencimientoDate = safeParseDate(inv.fechaVencimiento);
-      const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
-      
-      if (vencimientoStr && vencimientoStr < todayStr) {
+    if (!st.isPaid) {
+      if (st.isOverdue) {
         vencidasCount++;
-      } else if (vencimientoStr) {
-        const diffDays = Math.ceil((vencimientoDate.getTime() - now.getTime()) / 86400000);
-        if (diffDays >= 0 && diffDays <= 5) proximasCount++;
+      } else if (st.isDueToday || st.isUpcoming) {
+        proximasCount++;
       }
     }
   });
 
-  const totalDeudaBs = totalDeudaUSD * currentTasa;
+  const totalDeudaBsEquiv = (totalDeudaUSD * currentTasa) + totalDeudaVES;
 
   return `
     <div style="max-width:1150px; margin:0 auto; padding-bottom:40px;">
@@ -8512,7 +8783,7 @@ function providersView() {
             <i class="fas fa-truck-loading" style="color:#10b981;"></i> Proveedores &amp; Cuentas por Pagar
           </h1>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0;">
-            Control integral de notas de entrega, pagos fraccionados, tasa oficial BCV y alertas de vencimiento para los jefes.
+            Control integral de notas de entrega físicas, compras de insumos, vencimientos y pagos a proveedores.
           </p>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
@@ -8524,8 +8795,8 @@ function providersView() {
           <button type="button" class="primary-button" onclick="window.openNewProviderInvoiceModal()" style="background:#10b981; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
             <i class="fas fa-file-invoice-dollar"></i> + Nueva Nota de Entrega
           </button>
-          <button type="button" class="secondary-button" onclick="window.downloadProvidersReport()" style="background:#f59e0b; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-            <i class="fas fa-download"></i> Descargar Reporte
+          <button type="button" class="secondary-button" onclick="window.downloadProvidersReport()" style="background:#f59e0b; color:white; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+            <i class="fas fa-print"></i> Imprimir Reporte Físico
           </button>
           <button type="button" class="secondary-button" onclick="window.exportOverdueToCalendar()" style="background:#0ea5e9; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
             <i class="fas fa-calendar-plus"></i> Exportar a Calendario
@@ -8537,14 +8808,20 @@ function providersView() {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:20px;">
         <div class="sics-metric-card" style="border-color:#10b981;">
           <div style="font-size:11px; font-weight:700; color:#10b981; text-transform:uppercase;">DEUDA TOTAL PENDIENTE</div>
-          <div style="font-size:24px; font-weight:900; color:var(--text-main); margin:4px 0;">$${totalDeudaUSD.toFixed(2)}</div>
-          <div style="font-size:11.5px; color:#38bdf8; font-weight:bold;">Bs. ${totalDeudaBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div style="font-size:24px; font-weight:900; color:var(--text-main); margin:4px 0;">
+            $${totalDeudaUSD.toFixed(2)} ${totalDeudaVES > 0 ? `<span style="font-size:13px; color:#38bdf8;">+ Bs. ${totalDeudaVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>` : ''}
+          </div>
+          <div style="font-size:11.5px; color:#38bdf8; font-weight:bold;">Bs. ${totalDeudaBsEquiv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Equiv. BCV)</div>
         </div>
 
-        <div class="sics-metric-card" style="border-color:${vencidasCount ? '#ef4444' : 'var(--border-color)'};">
-          <div style="font-size:11px; font-weight:700; color:#ef4444; text-transform:uppercase;">NOTAS VENCIDAS</div>
-          <div style="font-size:24px; font-weight:900; color:${vencidasCount ? '#ef4444' : 'var(--text-main)'}; margin:4px 0;">${vencidasCount}</div>
-          <div style="font-size:11px; color:${vencidasCount ? '#ef4444' : 'var(--text-muted)'}; font-weight:bold;">${vencidasCount ? '⚠️ Requieren pago urgente' : 'Cero deudas vencidas'}</div>
+        <div class="sics-metric-card" style="border-color:${vencidasCount ? '#ef4444' : 'var(--border-color)'}; background:${vencidasCount ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-card)'};">
+          <div style="font-size:11px; font-weight:800; color:#ef4444; text-transform:uppercase; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-exclamation-triangle"></i> NOTAS VENCIDAS
+          </div>
+          <div style="font-size:26px; font-weight:900; color:${vencidasCount ? '#ef4444' : 'var(--text-main)'}; margin:4px 0;">${vencidasCount}</div>
+          <div style="font-size:11.5px; font-weight:${vencidasCount ? 'bold' : 'normal'}; color:${vencidasCount ? '#ef4444' : 'var(--text-muted)'};">
+            ${vencidasCount > 0 ? '🚨 ¡Prioridad máxima para pagar!' : 'Cero deudas vencidas'}
+          </div>
         </div>
 
         <div class="sics-metric-card" style="border-color:${proximasCount ? '#f59e0b' : 'var(--border-color)'};">
@@ -8567,7 +8844,7 @@ function providersView() {
             <i class="fas fa-list-alt" style="color:#10b981;"></i> Registro de Notas de Entrega y Facturas
           </div>
           <div style="display:flex; gap:6px;">
-            <input type="text" placeholder="🔍 Filtrar proveedor o nota..." oninput="window.filterProviderTable(this.value)" style="padding:5px 10px; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; width:200px;">
+            <input type="text" placeholder="🔍 Filtrar proveedor o nota..." oninput="window.filterProviderTable(this.value)" style="padding:5px 10px; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; width:220px;">
           </div>
         </div>
 
@@ -8577,13 +8854,11 @@ function providersView() {
               <tr>
                 <th>Proveedor</th>
                 <th>N° Nota / Factura</th>
+                <th>Fecha Entrega (Local)</th>
                 <th>Fecha Registro</th>
-                <th>Fecha Nota</th>
                 <th>Fecha Vencimiento</th>
-                <th>Fecha Entrega Pedido</th>
-                <th>Cumpliente</th>
-                <th style="text-align:right;">Total ($)</th>
-                <th style="text-align:right;">Abonado ($)</th>
+                <th style="text-align:right;">Total</th>
+                <th style="text-align:right;">Abonado</th>
                 <th style="text-align:right;">Saldo Deuda</th>
                 <th style="text-align:center;">Estado</th>
                 <th style="text-align:center;">Días Vencido</th>
@@ -8592,56 +8867,37 @@ function providersView() {
             </thead>
             <tbody>
               ${invoices.map(inv => {
-                // Parsear fecha de vencimiento correctamente
-                const vencimientoDate = safeParseDate(inv.fechaVencimiento);
-                const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
-                
-                const isOverdue = vencimientoStr && vencimientoStr < todayStr && inv.saldoPendiente > 0.01;
-                const venceHoy = vencimientoStr === todayStr && inv.saldoPendiente > 0.01;
-                
-                // Calcular días vencido
-                let diasVencido = 0;
-                if (isOverdue && vencimientoDate) {
-                  const diffTime = new Date(todayStr).getTime() - vencimientoDate.getTime();
-                  diasVencido = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                }
-                
-                // Calcular días para vencer
-                let diasParaVencer = 0;
-                if (!isOverdue && vencimientoDate && inv.saldoPendiente > 0.01) {
-                  const diffTime = vencimientoDate.getTime() - new Date(todayStr).getTime();
-                  diasParaVencer = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                }
-                
-                const badgeClass = isOverdue ? 'prov-badge-overdue' : (venceHoy ? 'prov-badge-today' : (inv.saldoPendiente <= 0.01 ? 'prov-badge-paid' : (inv.abonado > 0 ? 'prov-badge-partial' : 'prov-badge-pending')));
-                const badgeText = isOverdue ? `⚠️ Vencida (${diasVencido} días)` : (venceHoy ? '✅ Vence hoy' : (inv.saldoPendiente <= 0.01 ? '✅ Pagada' : (inv.abonado > 0 ? '🟡 Abono Parcial' : `⏳ Vence en ${diasParaVencer} días`)));
+                const st = getProviderInvoiceStatus(inv, now);
+                const sym = st.currencySymbol;
+                const totalFmt = `${sym} ${Number(st.total).toFixed(2)}`;
+                const abonadoFmt = `${sym} ${Number(st.abonado).toFixed(2)}`;
+                const saldoFmt = `${sym} ${Number(st.saldo).toFixed(2)}`;
 
                 return `
-                  <tr data-prov-search="${escapeHtml((inv.proveedor + ' ' + inv.numeroNota).toLowerCase())}">
+                  <tr data-prov-search="${escapeHtml((inv.proveedor + ' ' + (inv.numeroNota || '') + ' ' + (inv.notas || '')).toLowerCase())}" style="${st.isOverdue ? 'background:rgba(239, 68, 68, 0.05);' : ''}">
                     <td style="font-weight:700; color:var(--text-main);">
                       <div style="display:flex; align-items:center; gap:6px;">
-                        <i class="fas fa-building" style="color:#9ca3af; font-size:11px;"></i> ${escapeHtml(inv.proveedor)}
+                        <i class="fas fa-building" style="color:#9ca3af; font-size:11px;"></i> ${escapeHtml(inv.proveedor || 'Sin Proveedor')}
+                        ${st.isVES ? '<span style="background:rgba(14,165,233,0.15); color:#0ea5e9; font-size:9.5px; padding:1px 5px; border-radius:4px; font-weight:bold;">Bs VES</span>' : ''}
                       </div>
-                      ${inv.notas ? `<div style="font-size:10.5px; color:var(--text-muted); font-weight:normal;">${escapeHtml(inv.notas)}</div>` : ''}
+                      ${inv.notas ? `<div style="font-size:10.5px; color:var(--text-muted); font-weight:normal; margin-top:2px;">${escapeHtml(inv.notas)}</div>` : ''}
                     </td>
                     <td style="font-family:monospace; font-weight:bold; color:#38bdf8;">${escapeHtml(inv.numeroNota || 'S/N')}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${formatSimpleDate(inv.fechaRegistro || inv.fechaNota)}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${formatSimpleDate(inv.fechaNota)}</td>
-                    <td style="font-size:11.5px; font-weight:bold; color:${isOverdue ? '#ef4444' : (venceHoy ? '#10b981' : 'var(--text-main)')};">
-                      ${formatSimpleDate(inv.fechaVencimiento) || 'Inmediato'}
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(st.fEntregaClean)}</td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(st.fRegistroClean)}</td>
+                    <td style="font-size:11.5px; font-weight:bold; color:${st.isOverdue ? '#ef4444' : (st.isDueToday ? '#10b981' : (st.isUpcoming ? '#f59e0b' : 'var(--text-main)'))};">
+                      ${escapeHtml(st.fVenceClean)}
                     </td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${formatSimpleDate(inv.fechaEntregaPedido)}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.cumpliente || 'N/A')}</td>
-                    <td style="text-align:right; font-weight:bold;">$${Number(inv.montoTotal).toFixed(2)}</td>
-                    <td style="text-align:right; color:#10b981; font-weight:bold;">$${Number(inv.abonado).toFixed(2)}</td>
+                    <td style="text-align:right; font-weight:bold;">${totalFmt}</td>
+                    <td style="text-align:right; color:#10b981; font-weight:bold;">${abonadoFmt}</td>
                     <td style="text-align:right;">
-                      <strong style="color:${inv.saldoPendiente > 0 ? '#ef4444' : '#10b981'}; font-size:13px;">$${Number(inv.saldoPendiente).toFixed(2)}</strong>
+                      <strong style="color:${st.saldo > 0 ? (st.isOverdue ? '#ef4444' : '#f59e0b') : '#10b981'}; font-size:13px;">${saldoFmt}</strong>
                     </td>
                     <td style="text-align:center;">
-                      <span class="${badgeClass}">${badgeText}</span>
+                      <span class="${st.badgeClass}">${st.badgeText}</span>
                     </td>
-                    <td style="text-align:center; font-weight:bold; color:${isOverdue ? '#ef4444' : 'var(--text-muted)'};">
-                      ${isOverdue ? `${diasVencido} días` : '-'}
+                    <td style="text-align:center; font-weight:bold; color:${st.isOverdue ? '#ef4444' : 'var(--text-muted)'};">
+                      ${st.isOverdue ? `<span style="background:rgba(239,68,68,0.15); color:#ef4444; padding:2px 6px; border-radius:6px; font-size:11px;">${st.diasVencido} d</span>` : '-'}
                     </td>
                     <td style="text-align:center; white-space:nowrap;">
                       <button type="button" class="primary-button" onclick="window.openProviderInvoiceDetailModal('${escapeHtml(inv.id)}')" style="font-size:10.5px; padding:3px 8px; background:#0ea5e9; border:none; margin-right:4px;" title="Ver abonos y fotos">
@@ -8666,8 +8922,8 @@ function providersView() {
     setTimeout(() => {
       Swal.fire({
         icon: 'warning',
-        title: `⚠️ Tienes ${vencidasCount} notas vencidas`,
-        text: 'Estas notas requieren pago urgente. Por favor revisa la lista de proveedores.',
+        title: `⚠️ Tienes ${vencidasCount} nota(s) vencida(s)`,
+        text: 'Estas notas requieren pago urgente con máxima prioridad. Por favor revisa la lista de proveedores.',
         confirmButtonColor: '#ef4444',
         confirmButtonText: 'Revisar Ahora'
       });
@@ -9020,7 +9276,7 @@ window.openProviderInvoiceDetailModal = function(id) {
           ${escapeHtml(inv.proveedor)}
         </h2>
         <div style="font-size:12px; color:var(--text-muted);">
-          Nota N° <strong>${escapeHtml(inv.numeroNota)}</strong> | Recibido: ${escapeHtml(inv.fechaEntrega)} | Vence: <strong>${escapeHtml(inv.fechaVencimiento)}</strong>
+          Nota N° <strong>${escapeHtml(inv.numeroNota)}</strong> | Recibido: <strong>${escapeHtml(formatSimpleDate(inv.fechaEntrega))}</strong> | Vence: <strong style="color:#ef4444;">${escapeHtml(formatSimpleDate(inv.fechaVencimiento))}</strong>
         </div>
       </div>
       <button class="close-button" data-action="close">×</button>
@@ -11527,7 +11783,7 @@ function getOrderElapsedMinutes(order) {
   }
 
   const pausedMins = Math.max(0, Math.round(Number(order.tiempoPausadoMin || 0)));
-  const isPaused = (estado === "Pausado" || estado === "Esperando Imprenta" || estado === "Esperando Planchado");
+  const isPaused = isPausedProductionStatus(estado);
 
   let endMs = Date.now();
   if (isPaused) {
@@ -11536,8 +11792,25 @@ function getOrderElapsedMinutes(order) {
       if (!isNaN(pMs) && pMs >= startMs) {
         endMs = pMs;
       }
-    } else if (order.duracionRealMin && Number(order.duracionRealMin) > 0) {
-      return Math.max(0, Math.round(Number(order.duracionRealMin)));
+    } else {
+      // Fallback para pedidos pausados donde ultimaPausa no se guardó en Google Sheets:
+      // buscar timestamp en order.notas (ej: 📌 [26/09/2026 09:09 PM - Moises]: En espera de planchado)
+      let foundMs = null;
+      if (order.notas && typeof order.notas === "string") {
+        const matches = [...order.notas.matchAll(/\[(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)[\s\-]/gi)];
+        if (matches.length > 0) {
+          const lastMatch = matches[matches.length - 1];
+          const parsed = safeParseDate(`${lastMatch[1]} a las ${lastMatch[2]}`);
+          if (parsed && !isNaN(parsed.getTime()) && parsed.getTime() >= startMs) {
+            foundMs = parsed.getTime();
+          }
+        }
+      }
+      if (foundMs) {
+        endMs = foundMs;
+      } else if (order.duracionRealMin && Number(order.duracionRealMin) > 0) {
+        return Math.max(0, Math.round(Number(order.duracionRealMin)));
+      }
     }
   } else if (order.finProduccion) {
     const fMs = parseSafeTimestampMs(order.finProduccion);
