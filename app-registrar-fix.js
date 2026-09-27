@@ -8359,13 +8359,11 @@ window.downloadProvidersReport = function() {
         <h1>📊 REPORTE DE CUENTAS POR PAGAR</h1>
         <h2>Creaciones JJ - Taller Ochoa & Risquez</h2>
         <p>Fecha: ${new Date().toLocaleDateString('es-VE')}</p>
-        <p>Tasa BCV: Bs. ${currentTasa.toFixed(2)} por USD</p>
       </div>
 
       <div class="summary">
         <h2>📈 Resumen</h2>
         <p><strong>Total Deuda Pendiente:</strong> $${invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0).toFixed(2)} USD</p>
-        <p><strong>En Bolívares:</strong> Bs. ${(invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0) * currentTasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
         <p><strong>Total Notas:</strong> ${invoices.length}</p>
       </div>
 
@@ -8374,44 +8372,57 @@ window.downloadProvidersReport = function() {
           <tr>
             <th>Proveedor</th>
             <th>Nota #</th>
+            <th>Fecha Registro</th>
             <th>Fecha Nota</th>
+            <th>Fecha Vencimiento</th>
+            <th>Fecha Entrega Pedido</th>
+            <th>Cumpliente</th>
             <th>Monto Total (USD)</th>
             <th>Abonado (USD)</th>
             <th>Saldo Pendiente (USD)</th>
-            <th>Saldo en Bs</th>
-            <th>Vencimiento</th>
             <th>Estado</th>
+            <th>Días Vencido</th>
           </tr>
         </thead>
         <tbody>
           ${invoices.map(inv => {
             const saldo = Number(inv.saldoPendiente || 0);
-            const saldoBs = saldo * currentTasa;
             const vencimiento = inv.fechaVencimiento || 'No especificado';
-            const today = new Date().toISOString().split('T')[0];
-            const isVencida = vencimiento !== 'No especificado' && vencimiento < today;
-            const rowClass = isVencida ? 'vencida' : (vencimiento === today ? 'al-dia' : 'proxima');
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            const isVencida = vencimiento !== 'No especificado' && vencimiento < todayStr;
+            
+            // Calcular días vencido
+            let diasVencido = 0;
+            if (isVencida && vencimiento !== 'No especificado') {
+              const diffTime = today.getTime() - new Date(vencimiento).getTime();
+              diasVencido = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            }
+            
+            const rowClass = isVencida ? 'vencida' : (vencimiento === todayStr ? 'al-dia' : 'proxima');
             
             return `
               <tr class="${rowClass}">
                 <td>${escapeHtml(inv.proveedor || 'N/A')}</td>
                 <td>${escapeHtml(inv.numeroNota || 'N/A')}</td>
+                <td>${escapeHtml(inv.fechaRegistro || inv.fechaNota || 'N/A')}</td>
                 <td>${escapeHtml(inv.fechaNota || 'N/A')}</td>
+                <td>${escapeHtml(vencimiento)}</td>
+                <td>${escapeHtml(inv.fechaEntregaPedido || 'N/A')}</td>
+                <td>${escapeHtml(inv.cumpliente || 'N/A')}</td>
                 <td>$${Number(inv.montoTotal || 0).toFixed(2)}</td>
                 <td>$${Number(inv.abonado || 0).toFixed(2)}</td>
                 <td><strong>$${saldo.toFixed(2)}</strong></td>
-                <td><strong>Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></td>
-                <td>${escapeHtml(vencimiento)}</td>
-                <td>${isVencida ? '⚠️ VENCIDA' : (vencimiento === today ? '✅ VENCE HOY' : '📅 Próxima')}</td>
+                <td>${isVencida ? '⚠️ VENCIDA' : (vencimiento === todayStr ? '✅ VENCE HOY' : '📅 Próxima')}</td>
+                <td>${isVencida ? `<strong style="color:#ef4444;">${diasVencido} días</strong>` : '-'}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
         <tfoot>
           <tr class="total-row">
-            <td colspan="5" style="text-align: right;">TOTAL GENERAL:</td>
+            <td colspan="9" style="text-align: right;">TOTAL GENERAL:</td>
             <td>$${invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0).toFixed(2)}</td>
-            <td>Bs. ${(invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0) * currentTasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
             <td colspan="2"></td>
           </tr>
         </tfoot>
@@ -8548,21 +8559,33 @@ function providersView() {
               <tr>
                 <th>Proveedor</th>
                 <th>N° Nota / Factura</th>
-                <th>Fecha Entrega</th>
-                <th>Vence</th>
+                <th>Fecha Registro</th>
+                <th>Fecha Nota</th>
+                <th>Fecha Vencimiento</th>
+                <th>Fecha Entrega Pedido</th>
+                <th>Cumpliente</th>
                 <th style="text-align:right;">Total ($)</th>
                 <th style="text-align:right;">Abonado ($)</th>
                 <th style="text-align:right;">Saldo Deuda</th>
                 <th style="text-align:center;">Estado</th>
+                <th style="text-align:center;">Días Vencido</th>
                 <th style="text-align:center;">Acciones</th>
               </tr>
             </thead>
             <tbody>
               ${invoices.map(inv => {
                 const isOverdue = inv.fechaVencimiento && inv.fechaVencimiento < todayStr && inv.saldoPendiente > 0.01;
-                const badgeClass = isOverdue ? 'prov-badge-overdue' : (inv.saldoPendiente <= 0.01 ? 'prov-badge-paid' : (inv.abonado > 0 ? 'prov-badge-partial' : 'prov-badge-pending'));
-                const badgeText = isOverdue ? '⚠️ Vencida' : (inv.saldoPendiente <= 0.01 ? '✅ Pagada' : (inv.abonado > 0 ? '🟡 Abono Parcial' : '⏳ Pendiente'));
-                const saldoBs = (inv.saldoPendiente * currentTasa).toLocaleString('es-VE', { maximumFractionDigits: 0 });
+                const venceHoy = inv.fechaVencimiento === todayStr && inv.saldoPendiente > 0.01;
+                
+                // Calcular días vencido
+                let diasVencido = 0;
+                if (isOverdue && inv.fechaVencimiento) {
+                  const diffTime = new Date(todayStr).getTime() - new Date(inv.fechaVencimiento).getTime();
+                  diasVencido = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+                
+                const badgeClass = isOverdue ? 'prov-badge-overdue' : (venceHoy ? 'prov-badge-today' : (inv.saldoPendiente <= 0.01 ? 'prov-badge-paid' : (inv.abonado > 0 ? 'prov-badge-partial' : 'prov-badge-pending')));
+                const badgeText = isOverdue ? `⚠️ Vencida (${diasVencido} días)` : (venceHoy ? '✅ Vence hoy' : (inv.saldoPendiente <= 0.01 ? '✅ Pagada' : (inv.abonado > 0 ? '🟡 Abono Parcial' : '⏳ Pendiente')));
 
                 return `
                   <tr data-prov-search="${escapeHtml((inv.proveedor + ' ' + inv.numeroNota).toLowerCase())}">
@@ -8573,18 +8596,23 @@ function providersView() {
                       ${inv.notas ? `<div style="font-size:10.5px; color:var(--text-muted); font-weight:normal;">${escapeHtml(inv.notas)}</div>` : ''}
                     </td>
                     <td style="font-family:monospace; font-weight:bold; color:#38bdf8;">${escapeHtml(inv.numeroNota || 'S/N')}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaEntrega)}</td>
-                    <td style="font-size:11.5px; font-weight:bold; color:${isOverdue ? '#ef4444' : 'var(--text-main)'};">
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaRegistro || inv.fechaNota || 'N/A')}</td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaNota || 'N/A')}</td>
+                    <td style="font-size:11.5px; font-weight:bold; color:${isOverdue ? '#ef4444' : (venceHoy ? '#10b981' : 'var(--text-main)')};">
                       ${escapeHtml(inv.fechaVencimiento || 'Inmediato')}
                     </td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaEntregaPedido || 'N/A')}</td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.cumpliente || 'N/A')}</td>
                     <td style="text-align:right; font-weight:bold;">$${Number(inv.montoTotal).toFixed(2)}</td>
                     <td style="text-align:right; color:#10b981; font-weight:bold;">$${Number(inv.abonado).toFixed(2)}</td>
                     <td style="text-align:right;">
                       <strong style="color:${inv.saldoPendiente > 0 ? '#ef4444' : '#10b981'}; font-size:13px;">$${Number(inv.saldoPendiente).toFixed(2)}</strong>
-                      ${inv.saldoPendiente > 0 ? `<div style="font-size:10px; color:#38bdf8;">Bs. ${saldoBs}</div>` : ''}
                     </td>
                     <td style="text-align:center;">
                       <span class="${badgeClass}">${badgeText}</span>
+                    </td>
+                    <td style="text-align:center; font-weight:bold; color:${isOverdue ? '#ef4444' : 'var(--text-muted)'};">
+                      ${isOverdue ? `${diasVencido} días` : '-'}
                     </td>
                     <td style="text-align:center; white-space:nowrap;">
                       <button type="button" class="primary-button" onclick="window.openProviderInvoiceDetailModal('${escapeHtml(inv.id)}')" style="font-size:10.5px; padding:3px 8px; background:#0ea5e9; border:none; margin-right:4px;" title="Ver abonos y fotos">
