@@ -219,6 +219,17 @@ function formatDate(value) {
   }
 }
 
+// Formatear fecha simple (DD/MM/YYYY) para mostrar en tablas
+function formatSimpleDate(value) {
+  if (!value) return 'N/A';
+  const date = safeParseDate(value);
+  if (!date) return String(value);
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 // Universal Normalizers
 const normalizeClient = (c) => {
   if (!c) return { name: '', phone: '', delivery: 'No', zona: '', direccion: '' };
@@ -8387,33 +8398,34 @@ window.downloadProvidersReport = function() {
         <tbody>
           ${invoices.map(inv => {
             const saldo = Number(inv.saldoPendiente || 0);
-            const vencimiento = inv.fechaVencimiento || 'No especificado';
+            const vencimientoDate = safeParseDate(inv.fechaVencimiento);
+            const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
             const today = new Date();
             const todayStr = today.toISOString().split('T')[0];
-            const isVencida = vencimiento !== 'No especificado' && vencimiento < todayStr;
+            const isVencida = vencimientoStr && vencimientoStr < todayStr;
             
             // Calcular días vencido
             let diasVencido = 0;
-            if (isVencida && vencimiento !== 'No especificado') {
-              const diffTime = today.getTime() - new Date(vencimiento).getTime();
+            if (isVencida && vencimientoDate) {
+              const diffTime = today.getTime() - vencimientoDate.getTime();
               diasVencido = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             }
             
-            const rowClass = isVencida ? 'vencida' : (vencimiento === todayStr ? 'al-dia' : 'proxima');
+            const rowClass = isVencida ? 'vencida' : (vencimientoStr === todayStr ? 'al-dia' : 'proxima');
             
             return `
               <tr class="${rowClass}">
                 <td>${escapeHtml(inv.proveedor || 'N/A')}</td>
                 <td>${escapeHtml(inv.numeroNota || 'N/A')}</td>
-                <td>${escapeHtml(inv.fechaRegistro || inv.fechaNota || 'N/A')}</td>
-                <td>${escapeHtml(inv.fechaNota || 'N/A')}</td>
-                <td>${escapeHtml(vencimiento)}</td>
-                <td>${escapeHtml(inv.fechaEntregaPedido || 'N/A')}</td>
+                <td>${formatSimpleDate(inv.fechaRegistro || inv.fechaNota)}</td>
+                <td>${formatSimpleDate(inv.fechaNota)}</td>
+                <td>${formatSimpleDate(inv.fechaVencimiento) || 'No especificado'}</td>
+                <td>${formatSimpleDate(inv.fechaEntregaPedido)}</td>
                 <td>${escapeHtml(inv.cumpliente || 'N/A')}</td>
                 <td>$${Number(inv.montoTotal || 0).toFixed(2)}</td>
                 <td>$${Number(inv.abonado || 0).toFixed(2)}</td>
                 <td><strong>$${saldo.toFixed(2)}</strong></td>
-                <td>${isVencida ? '⚠️ VENCIDA' : (vencimiento === todayStr ? '✅ VENCE HOY' : '📅 Próxima')}</td>
+                <td>${isVencida ? '⚠️ VENCIDA' : (vencimientoStr === todayStr ? '✅ VENCE HOY' : '📅 Próxima')}</td>
                 <td>${isVencida ? `<strong style="color:#ef4444;">${diasVencido} días</strong>` : '-'}</td>
               </tr>
             `;
@@ -8477,10 +8489,13 @@ function providersView() {
     totalAbonadoUSD += abon;
 
     if (saldo > 0.01) {
-      if (inv.fechaVencimiento && inv.fechaVencimiento < todayStr) {
+      const vencimientoDate = safeParseDate(inv.fechaVencimiento);
+      const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
+      
+      if (vencimientoStr && vencimientoStr < todayStr) {
         vencidasCount++;
-      } else if (inv.fechaVencimiento) {
-        const diffDays = Math.ceil((new Date(inv.fechaVencimiento) - now) / 86400000);
+      } else if (vencimientoStr) {
+        const diffDays = Math.ceil((vencimientoDate.getTime() - now.getTime()) / 86400000);
         if (diffDays >= 0 && diffDays <= 5) proximasCount++;
       }
     }
@@ -8511,6 +8526,9 @@ function providersView() {
           </button>
           <button type="button" class="secondary-button" onclick="window.downloadProvidersReport()" style="background:#f59e0b; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
             <i class="fas fa-download"></i> Descargar Reporte
+          </button>
+          <button type="button" class="secondary-button" onclick="window.exportOverdueToCalendar()" style="background:#0ea5e9; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+            <i class="fas fa-calendar-plus"></i> Exportar a Calendario
           </button>
         </div>
       </div>
@@ -8574,18 +8592,29 @@ function providersView() {
             </thead>
             <tbody>
               ${invoices.map(inv => {
-                const isOverdue = inv.fechaVencimiento && inv.fechaVencimiento < todayStr && inv.saldoPendiente > 0.01;
-                const venceHoy = inv.fechaVencimiento === todayStr && inv.saldoPendiente > 0.01;
+                // Parsear fecha de vencimiento correctamente
+                const vencimientoDate = safeParseDate(inv.fechaVencimiento);
+                const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
+                
+                const isOverdue = vencimientoStr && vencimientoStr < todayStr && inv.saldoPendiente > 0.01;
+                const venceHoy = vencimientoStr === todayStr && inv.saldoPendiente > 0.01;
                 
                 // Calcular días vencido
                 let diasVencido = 0;
-                if (isOverdue && inv.fechaVencimiento) {
-                  const diffTime = new Date(todayStr).getTime() - new Date(inv.fechaVencimiento).getTime();
+                if (isOverdue && vencimientoDate) {
+                  const diffTime = new Date(todayStr).getTime() - vencimientoDate.getTime();
                   diasVencido = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 }
                 
+                // Calcular días para vencer
+                let diasParaVencer = 0;
+                if (!isOverdue && vencimientoDate && inv.saldoPendiente > 0.01) {
+                  const diffTime = vencimientoDate.getTime() - new Date(todayStr).getTime();
+                  diasParaVencer = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+                
                 const badgeClass = isOverdue ? 'prov-badge-overdue' : (venceHoy ? 'prov-badge-today' : (inv.saldoPendiente <= 0.01 ? 'prov-badge-paid' : (inv.abonado > 0 ? 'prov-badge-partial' : 'prov-badge-pending')));
-                const badgeText = isOverdue ? `⚠️ Vencida (${diasVencido} días)` : (venceHoy ? '✅ Vence hoy' : (inv.saldoPendiente <= 0.01 ? '✅ Pagada' : (inv.abonado > 0 ? '🟡 Abono Parcial' : '⏳ Pendiente')));
+                const badgeText = isOverdue ? `⚠️ Vencida (${diasVencido} días)` : (venceHoy ? '✅ Vence hoy' : (inv.saldoPendiente <= 0.01 ? '✅ Pagada' : (inv.abonado > 0 ? '🟡 Abono Parcial' : `⏳ Vence en ${diasParaVencer} días`)));
 
                 return `
                   <tr data-prov-search="${escapeHtml((inv.proveedor + ' ' + inv.numeroNota).toLowerCase())}">
@@ -8596,12 +8625,12 @@ function providersView() {
                       ${inv.notas ? `<div style="font-size:10.5px; color:var(--text-muted); font-weight:normal;">${escapeHtml(inv.notas)}</div>` : ''}
                     </td>
                     <td style="font-family:monospace; font-weight:bold; color:#38bdf8;">${escapeHtml(inv.numeroNota || 'S/N')}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaRegistro || inv.fechaNota || 'N/A')}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaNota || 'N/A')}</td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${formatSimpleDate(inv.fechaRegistro || inv.fechaNota)}</td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${formatSimpleDate(inv.fechaNota)}</td>
                     <td style="font-size:11.5px; font-weight:bold; color:${isOverdue ? '#ef4444' : (venceHoy ? '#10b981' : 'var(--text-main)')};">
-                      ${escapeHtml(inv.fechaVencimiento || 'Inmediato')}
+                      ${formatSimpleDate(inv.fechaVencimiento) || 'Inmediato'}
                     </td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaEntregaPedido || 'N/A')}</td>
+                    <td style="font-size:11.5px; color:var(--text-muted);">${formatSimpleDate(inv.fechaEntregaPedido)}</td>
                     <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.cumpliente || 'N/A')}</td>
                     <td style="text-align:right; font-weight:bold;">$${Number(inv.montoTotal).toFixed(2)}</td>
                     <td style="text-align:right; color:#10b981; font-weight:bold;">$${Number(inv.abonado).toFixed(2)}</td>
@@ -8631,7 +8660,77 @@ function providersView() {
       </div>
     </div>
   `;
+
+  // Mostrar alerta si hay notas vencidas
+  if (vencidasCount > 0) {
+    setTimeout(() => {
+      Swal.fire({
+        icon: 'warning',
+        title: `⚠️ Tienes ${vencidasCount} notas vencidas`,
+        text: 'Estas notas requieren pago urgente. Por favor revisa la lista de proveedores.',
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Revisar Ahora'
+      });
+    }, 500);
+  }
+
+  // Actualizar badge de notificación en el botón de proveedores
+  const tabBadgeProviders = document.getElementById('tabBadgeProviders');
+  if (tabBadgeProviders) {
+    if (vencidasCount > 0) {
+      tabBadgeProviders.textContent = vencidasCount;
+      tabBadgeProviders.style.display = 'inline-block';
+      tabBadgeProviders.style.background = '#ef4444';
+    } else {
+      tabBadgeProviders.style.display = 'none';
+    }
+  }
 }
+
+// Exportar notas vencidas a calendario (.ics)
+window.exportOverdueToCalendar = function() {
+  const invoices = getStoredProvidersData();
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  
+  let icsContent = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Creaciones JJ//Proveedores//ES\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n';
+  
+  invoices.forEach(inv => {
+    const vencimientoDate = safeParseDate(inv.fechaVencimiento);
+    const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
+    
+    if (vencimientoStr && inv.saldoPendiente > 0.01) {
+      const uid = inv.id + '@creacionesjj.com';
+      const dtstart = vencimientoStr.replace(/-/g, '');
+      const dtend = vencimientoDate ? new Date(vencimientoDate.getTime() + 86400000).toISOString().split('T')[0].replace(/-/g, '') : dtstart;
+      const summary = `⚠️ Vencimiento: ${inv.proveedor} - Nota ${inv.numeroNota}`;
+      const description = `Nota de entrega vencida\\nProveedor: ${inv.proveedor}\\nNota #: ${inv.numeroNota}\\nMonto: $${inv.montoTotal}\\nSaldo pendiente: $${inv.saldoPendiente}\\nFecha vencimiento: ${formatSimpleDate(inv.fechaVencimiento)}`;
+      
+      icsContent += 'BEGIN:VEVENT\n';
+      icsContent += `UID:${uid}\n`;
+      icsContent += `DTSTART;VALUE=DATE:${dtstart}\n`;
+      icsContent += `DTEND;VALUE=DATE:${dtend}\n`;
+      icsContent += `SUMMARY:${summary}\n`;
+      icsContent += `DESCRIPTION:${description}\n`;
+      icsContent += `STATUS:CONFIRMED\n`;
+      icsContent += 'END:VEVENT\n';
+    }
+  });
+  
+  icsContent += 'END:VCALENDAR';
+  
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'notas_vencidas_creaciones_jj.ics';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  
+  showToast('📅 Archivo de calendario exportado. Puedes importarlo a Google Calendar.');
+};
 
 window.updateBCVRate = function(newRate) {
   const r = parseFloat(newRate);
