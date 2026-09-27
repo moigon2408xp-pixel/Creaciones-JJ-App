@@ -3812,15 +3812,25 @@ function detail(order) {
       openFinishModal(order, val);
     } else {
       let pauseNote = "";
-      if (val === "Pausado") {
-        pauseNote = prompt("Motivo de la pausa (ej: Esperando material, respuesta del cliente...):");
+      const isPauseStatus = ["Pausado", "Esperando Imprenta", "Esperando Planchado"].includes(val);
+      
+      if (isPauseStatus) {
+        pauseNote = prompt("Motivo del cambio de estado (ej: Esperando material, respuesta del cliente, enviado a imprenta, esperando planchado...):");
         if (pauseNote === null) return;
       }
+      
       try {
+        const changes = { estado: val, nota: pauseNote };
+        
+        // Si es un estado de pausa, registrar el momento de la pausa
+        if (isPauseStatus) {
+          changes.ultimaPausa = new Date().toISOString();
+        }
+        
         await api("profile_update_order", {
           id: order.id,
           user: state.session?.name || "Usuario",
-          changes: { estado: val, nota: pauseNote }
+          changes: changes
         });
         closeModal();
         await refresh(false);
@@ -8313,6 +8323,121 @@ function getProviderList() {
   ]);
 }
 
+window.downloadProvidersReport = function() {
+  const invoices = getStoredProvidersData();
+  const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  
+  if (invoices.length === 0) {
+    alert("No hay notas de entrega para descargar.");
+    return;
+  }
+
+  // Generar HTML para imprimir
+  const printHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Reporte de Cuentas por Pagar - Creaciones JJ</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        h1 { color: #10b981; text-align: center; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #10b981; padding-bottom: 10px; }
+        .summary { background: #f0fdf4; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .summary h2 { margin: 0 0 10px 0; color: #059669; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+        th { background: #10b981; color: white; }
+        .vencida { background: #fef2f2; }
+        .proxima { background: #fffbeb; }
+        .al-dia { background: #f0fdf4; }
+        .total-row { font-weight: bold; background: #10b981; color: white; }
+        .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #6b7280; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>📊 REPORTE DE CUENTAS POR PAGAR</h1>
+        <h2>Creaciones JJ - Taller Ochoa & Risquez</h2>
+        <p>Fecha: ${new Date().toLocaleDateString('es-VE')}</p>
+        <p>Tasa BCV: Bs. ${currentTasa.toFixed(2)} por USD</p>
+      </div>
+
+      <div class="summary">
+        <h2>📈 Resumen</h2>
+        <p><strong>Total Deuda Pendiente:</strong> $${invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0).toFixed(2)} USD</p>
+        <p><strong>En Bolívares:</strong> Bs. ${(invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0) * currentTasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+        <p><strong>Total Notas:</strong> ${invoices.length}</p>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th>Nota #</th>
+            <th>Fecha Nota</th>
+            <th>Monto Total (USD)</th>
+            <th>Abonado (USD)</th>
+            <th>Saldo Pendiente (USD)</th>
+            <th>Saldo en Bs</th>
+            <th>Vencimiento</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${invoices.map(inv => {
+            const saldo = Number(inv.saldoPendiente || 0);
+            const saldoBs = saldo * currentTasa;
+            const vencimiento = inv.fechaVencimiento || 'No especificado';
+            const today = new Date().toISOString().split('T')[0];
+            const isVencida = vencimiento !== 'No especificado' && vencimiento < today;
+            const rowClass = isVencida ? 'vencida' : (vencimiento === today ? 'al-dia' : 'proxima');
+            
+            return `
+              <tr class="${rowClass}">
+                <td>${escapeHtml(inv.proveedor || 'N/A')}</td>
+                <td>${escapeHtml(inv.numeroNota || 'N/A')}</td>
+                <td>${escapeHtml(inv.fechaNota || 'N/A')}</td>
+                <td>$${Number(inv.montoTotal || 0).toFixed(2)}</td>
+                <td>$${Number(inv.abonado || 0).toFixed(2)}</td>
+                <td><strong>$${saldo.toFixed(2)}</strong></td>
+                <td><strong>Bs. ${saldoBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong></td>
+                <td>${escapeHtml(vencimiento)}</td>
+                <td>${isVencida ? '⚠️ VENCIDA' : (vencimiento === today ? '✅ VENCE HOY' : '📅 Próxima')}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td colspan="5" style="text-align: right;">TOTAL GENERAL:</td>
+            <td>$${invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0).toFixed(2)}</td>
+            <td>Bs. ${(invoices.reduce((sum, inv) => sum + Number(inv.saldoPendiente || 0), 0) * currentTasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="footer">
+        <p>Generado automáticamente por el Sistema de Gestión Creaciones JJ</p>
+        <p>Este reporte es para uso interno y control de cuentas por pagar</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Abrir en nueva ventana para imprimir
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(printHTML);
+  printWindow.document.close();
+  
+  // Esperar a que cargue y mostrar diálogo de impresión
+  setTimeout(() => {
+    printWindow.print();
+  }, 500);
+  
+  showToast("📄 Reporte generado. Se abrirá el diálogo de impresión.");
+};
+
 function saveProviderList(list) {
   store.set("pp_provider_list", list);
 }
@@ -8372,6 +8497,9 @@ function providersView() {
           </div>
           <button type="button" class="primary-button" onclick="window.openNewProviderInvoiceModal()" style="background:#10b981; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
             <i class="fas fa-file-invoice-dollar"></i> + Nueva Nota de Entrega
+          </button>
+          <button type="button" class="secondary-button" onclick="window.downloadProvidersReport()" style="background:#f59e0b; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+            <i class="fas fa-download"></i> Descargar Reporte
           </button>
         </div>
       </div>
