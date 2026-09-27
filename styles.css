@@ -2547,6 +2547,15 @@ dialog,
   font-size: 11px;
   font-weight: 700;
 }
+.prov-badge-today {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 800;
+}
 .prov-badge-paid {
   background: rgba(16, 185, 129, 0.15);
   color: #10b981;
