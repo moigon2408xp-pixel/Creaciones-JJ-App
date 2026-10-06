@@ -1,3 +1,18 @@
+
+// ESTADO Y FILTRO POR CORTES PARA GERENCIA (HISTORIAL JJ)
+window._jjHistoryCut = window._jjHistoryCut || "semana"; // 'hoy', 'semana', 'mes', 'todos'
+window._jjHistoryType = window._jjHistoryType || "todos";
+
+window.setHistoryCut = function(cut) {
+  window._jjHistoryCut = cut;
+  render();
+};
+
+window.setHistoryType = function(type) {
+  window._jjHistoryType = type;
+  render();
+};
+
 /**
  * SISTEMA DE PRODUCCIÓN Y API WEB DE PRIORIDAD PRODUCCIÓN
  * Versión 11.0 Definitiva - Frontend JavaScript (app-registrar-fix.js)
@@ -1231,7 +1246,34 @@ function queueView() {
 }
 
 function historyView() {
-  const rawOrders = (state.data.finishedOrders || []).slice().sort((a, b) => {
+  const now = new Date();
+  const currentCut = window._jjHistoryCut || "semana";
+  const currentType = window._jjHistoryType || "todos";
+
+  const rawOrders = (state.data.finishedOrders || []).slice().filter(o => {
+    // 1. Filtro por tipo de trabajo
+    if (currentType !== "todos") {
+      const t = String(o.tipo || "").toLowerCase();
+      if (!t.includes(currentType.toLowerCase())) return false;
+    }
+
+    // 2. Filtro por fecha de corte
+    const fStr = o.finProduccion || o.entrega;
+    if (!fStr) return currentCut === "todos";
+    const fDate = safeParseDate(fStr) || new Date(fStr);
+    if (isNaN(fDate.getTime())) return true;
+
+    if (currentCut === "hoy") {
+      return fDate.toDateString() === now.toDateString();
+    } else if (currentCut === "semana") {
+      const weekAgo = new Date();
+      weekAgo.setDate(now.getDate() - 7);
+      return fDate >= weekAgo;
+    } else if (currentCut === "mes") {
+      return fDate.getMonth() === now.getMonth() && fDate.getFullYear() === now.getFullYear();
+    }
+    return true;
+  }).sort((a, b) => {
     const dA = safeParseDate(a.finProduccion || a.entrega) || new Date(0);
     const dB = safeParseDate(b.finProduccion || b.entrega) || new Date(0);
     if (dA.getTime() !== dB.getTime()) return dB.getTime() - dA.getTime();
@@ -1252,6 +1294,59 @@ function historyView() {
         </div>
       </div>
     ` : ''}
+    
+    <!-- PANEL DE CORTES GERENCIALES (JEFES CREACIONES JJ) -->
+    <div style="background:var(--card-bg, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <div>
+          <strong style="color:var(--text-main); font-size:14px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS & RENDIMIENTO:
+          </strong>
+          <span style="font-size:12px; color:var(--text-muted);">Visualiza trabajos completados según el rango seleccionado.</span>
+        </div>
+        
+        <!-- Píldoras de corte de tiempo -->
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'hoy' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('hoy')">📅 Hoy</button>
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'semana' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('semana')">⚡ Esta Semana</button>
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'mes' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('mes')">📆 Este Mes</button>
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'todos' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('todos')">🌐 Todos</button>
+        </div>
+      </div>
+
+      <!-- Resumen en métricas para gerencia -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+        <div style="background:rgba(14,165,233,0.08); border-left:3.5px solid #0ea5e9; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#0284c7;">TOTAL CORTE</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.length} pedidos</div>
+        </div>
+        <div style="background:rgba(16,185,129,0.08); border-left:3.5px solid #10b981; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#059669;">TOPPERS 3D</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('topper')).length}</div>
+        </div>
+        <div style="background:rgba(168,85,247,0.08); border-left:3.5px solid #a855f7; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF & SUBLIMACIÓN</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('dtf') || String(o.tipo).toLowerCase().includes('sublim')).length}</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.08); border-left:3.5px solid #f59e0b; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS & PAPELERÍA</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => !String(o.tipo).toLowerCase().includes('topper') && !String(o.tipo).toLowerCase().includes('dtf')).length}</div>
+        </div>
+      </div>
+
+      <!-- Filtro por tipo de producto -->
+      <div style="margin-top:10px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:12px;">
+        <span style="color:var(--text-muted); font-weight:bold;">Filtrar tipo:</span>
+        <select onchange="window.setHistoryType(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:12px;">
+          <option value="todos" ${window._jjHistoryType === 'todos' ? 'selected' : ''}>Todos los tipos</option>
+          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D & Pastelería</option>
+          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil & Sublimación</option>
+          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa & Regalos</option>
+          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes & Académico</option>
+        </select>
+      </div>
+    </div>
+
     <div class="search-bar-container" style="margin-bottom:16px;">
       <span>🔍</span>
       <input type="text" id="history-search-input" placeholder="Buscar por cliente, teléfono, motivo, ID (PED-0001) o trabajador..." value="${escapeHtml(state.searchQuery)}">
@@ -1290,6 +1385,15 @@ function historyView() {
               ${order.comentarioCierre ? `<strong>Observación:</strong> ${escapeHtml(order.comentarioCierre)}<br/>` : ""}
               ${order.notas ? `<div style="font-size:12px; color:#d97706; margin-top:4px; font-weight:600;">📝 <strong>Bitácora:</strong> ${escapeHtml(order.notas.split('\n').pop() || order.notas)}</div>` : ""}
               
+              
+              ${(order.fotoNotaFisicaUrl || (order.notas && order.notas.includes("NOTA FÍSICA RESPALDO"))) ? `
+                <div style="margin-top:6px;">
+                  <a href="${escapeHtml(order.fotoNotaFisicaUrl || order.notas.match(/https:\/\/drive\.google\.com[^\s\n]+/)?.[0] || '#')}" target="_blank" rel="noopener" style="background:#f59e0b; color:white; font-size:11px; font-weight:bold; padding:3px 8px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                    📄 Ver Nota Física Adjunta (Respaldo Drive)
+                  </a>
+                </div>
+              ` : ''}
+
               ${refLinks.length ? `
                 <div style="margin-top:6px;">
                   <strong style="font-size:12px;">🖼️ Fotos de Referencia del Cliente:</strong><br/>
@@ -1341,6 +1445,59 @@ function teamView() {
     <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
       <button class="primary-button" data-action="new-order">＋ Registrar pedido</button>
     </div>
+    
+    <!-- PANEL DE CORTES GERENCIALES (JEFES CREACIONES JJ) -->
+    <div style="background:var(--card-bg, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+        <div>
+          <strong style="color:var(--text-main); font-size:14px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS & RENDIMIENTO:
+          </strong>
+          <span style="font-size:12px; color:var(--text-muted);">Visualiza trabajos completados según el rango seleccionado.</span>
+        </div>
+        
+        <!-- Píldoras de corte de tiempo -->
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'hoy' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('hoy')">📅 Hoy</button>
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'semana' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('semana')">⚡ Esta Semana</button>
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'mes' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('mes')">📆 Este Mes</button>
+          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'todos' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('todos')">🌐 Todos</button>
+        </div>
+      </div>
+
+      <!-- Resumen en métricas para gerencia -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+        <div style="background:rgba(14,165,233,0.08); border-left:3.5px solid #0ea5e9; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#0284c7;">TOTAL CORTE</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.length} pedidos</div>
+        </div>
+        <div style="background:rgba(16,185,129,0.08); border-left:3.5px solid #10b981; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#059669;">TOPPERS 3D</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('topper')).length}</div>
+        </div>
+        <div style="background:rgba(168,85,247,0.08); border-left:3.5px solid #a855f7; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF & SUBLIMACIÓN</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('dtf') || String(o.tipo).toLowerCase().includes('sublim')).length}</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.08); border-left:3.5px solid #f59e0b; padding:8px 12px; border-radius:8px;">
+          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS & PAPELERÍA</span>
+          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => !String(o.tipo).toLowerCase().includes('topper') && !String(o.tipo).toLowerCase().includes('dtf')).length}</div>
+        </div>
+      </div>
+
+      <!-- Filtro por tipo de producto -->
+      <div style="margin-top:10px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:12px;">
+        <span style="color:var(--text-muted); font-weight:bold;">Filtrar tipo:</span>
+        <select onchange="window.setHistoryType(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:12px;">
+          <option value="todos" ${window._jjHistoryType === 'todos' ? 'selected' : ''}>Todos los tipos</option>
+          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D & Pastelería</option>
+          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil & Sublimación</option>
+          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa & Regalos</option>
+          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes & Académico</option>
+        </select>
+      </div>
+    </div>
+
     <div class="search-bar-container" style="margin-bottom:16px;">
       <span>🔍</span>
       <input type="text" id="team-search-input" placeholder="Buscar por cliente, teléfono, motivo, ID o trabajador..." value="${escapeHtml(state.searchQuery)}">
@@ -3556,7 +3713,7 @@ function detail(order) {
       <div style="background:rgba(16,185,129,0.12); border:1.5px solid #10b981; border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
         <div>
           <strong style="color:#10b981; font-size:13px; display:block;"><i class="fas fa-stopwatch fa-spin"></i> CRONÓMETRO EN VIVO:</strong>
-          <span style="font-size:12px; color:var(--text-main);">Llevas <strong id="modal-live-stopwatch-text">${formatMinutesToHuman(elMin)}</strong> de trabajo físico en mesa.</span>
+          <span style="font-size:12px; color:var(--text-main);">Llevas <strong id="modal-live-stopwatch-text">${formatMinutesToHuman(elMin)}</strong> de trabajo productivo (${order.diseno === 'En proceso' ? '🎨 Diseñando' : '⚙️ En mesa'}).</span>
         </div>
         <span class="live-stopwatch-badge live-stopwatch-active" id="modal-live-stopwatch-badge" data-order-id="${escapeHtml(order.id)}" style="font-size:13px; padding:6px 12px;">⏱️ ${elMin} min</span>
       </div>
@@ -3599,7 +3756,7 @@ function detail(order) {
     gatekeeperBanner = `
       <div style="background:linear-gradient(135deg, rgba(14,165,233,0.1), rgba(139,92,246,0.1)); border:2px solid #0ea5e9; border-radius:14px; padding:14px; margin-bottom:16px;">
         <div style="font-weight:900; color:#0284c7; font-size:14px; display:flex; align-items:center; gap:8px;">
-          <i class="fas fa-bolt" style="color:#0ea5e9;"></i> PASO OBLIGATORIO: ¿EN QUÉ FASE COMENZARÁS ESTE PEDIDO?
+          <i class="fas fa-bolt" style="color:#0ea5e9;"></i> ⏱️ INICIAR TIEMPO PRODUCTIVO: SELECCIONA FASE DE TRABAJO
         </div>
         <p style="font-size:12px; color:var(--text-muted); margin:6px 0 12px 0;">
           Para registrar las métricas exactas de tiempo y evitar confusiones en el taller, indica la etapa en que iniciarás:
@@ -3608,7 +3765,7 @@ function detail(order) {
           <div class="gatekeeper-choice-card diseno" onclick="setOrderPhase('${escapeHtml(order.id)}', 'diseno')">
             <i class="fas fa-palette" style="font-size:1.8rem; color:#8b5cf6;"></i>
             <strong style="color:#7c3aed; font-size:13px;">Fase de Diseño Gráfico</strong>
-            <span style="font-size:11px; color:var(--text-muted);">Elaboración previa en PC. No consume tiempo de mesa de producción.</span>
+            <span style="font-size:11px; color:var(--text-muted);">Diseño de topper, DTF o vectores en PC. ⏱️ Inicia cronómetro de diseño productivo.</span>
           </div>
           <div class="gatekeeper-choice-card produccion" onclick="setOrderPhase('${escapeHtml(order.id)}', 'produccion')">
             <i class="fas fa-tools" style="font-size:1.8rem; color:#10b981;"></i>
@@ -3805,7 +3962,16 @@ function detail(order) {
           <span style="font-weight:700; color:var(--text-muted); font-size:12px;">🖼️ FOTOS DE REFERENCIA:</span>
           <button type="button" class="secondary-button" style="padding:3px 8px; font-size:11px; background:#0284c7; color:white; border:none; border-radius:6px; cursor:pointer;" onclick="openAddRefImagesModal('${escapeHtml(order.id)}')">📷 Añadir Fotos de Referencia</button>
         </div>
-        ${refLinks.length ? `
+        
+              ${(order.fotoNotaFisicaUrl || (order.notas && order.notas.includes("NOTA FÍSICA RESPALDO"))) ? `
+                <div style="margin-top:6px;">
+                  <a href="${escapeHtml(order.fotoNotaFisicaUrl || order.notas.match(/https:\/\/drive\.google\.com[^\s\n]+/)?.[0] || '#')}" target="_blank" rel="noopener" style="background:#f59e0b; color:white; font-size:11px; font-weight:bold; padding:3px 8px; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                    📄 Ver Nota Física Adjunta (Respaldo Drive)
+                  </a>
+                </div>
+              ` : ''}
+
+              ${refLinks.length ? `
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
             ${refLinks.map((link, idx) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="secondary-button" style="color:var(--primary-color);">🖼️ Ref ${idx + 1}</a>`).join("")}
           </div>
@@ -6308,29 +6474,31 @@ setInterval(() => {
 window.setOrderPhase = async function(orderId, phase) {
   try {
     const isDark = document.body.getAttribute("data-theme") === "dark";
+    const nowIso = new Date().toISOString();
     if (phase === "diseno") {
       await api("profile_update_order", {
         id: orderId,
         user: state.session?.name || "Usuario",
         changes: {
           diseno: "En proceso",
-          estado: "Pendiente",
-          nota: "🎨 Inició fase de diseño gráfico en computadora."
+          estado: "En proceso",
+          inicioProduccion: nowIso,
+          nota: "🎨 Inició fase de diseño gráfico en computadora (Cronómetro Activo)."
         }
       });
-      showToast("🎨 Orden marcada en fase de Diseño. El tiempo de mesa no se computa.");
+      showToast("🎨 Fase de Diseño iniciada: Cronómetro productivo en marcha.");
     } else if (phase === "produccion") {
-      const nowIso = new Date().toISOString();
       await api("profile_update_order", {
         id: orderId,
         user: state.session?.name || "Usuario",
         changes: {
           estado: "En proceso",
+          diseno: "Listo",
           inicioProduccion: nowIso,
-          nota: "✂️ Inició fase de producción física en mesa de trabajo."
+          nota: "✂️ Inició fase de producción física en mesa de trabajo (Cronómetro Activo)."
         }
       });
-      showToast("⚡ Fase de Producción iniciada. ⏱️ Cronómetro en vivo activado.");
+      showToast("⚡ Fase de Producción iniciada: Cronómetro productivo en marcha.");
     }
     closeModal();
     await refresh(false);
@@ -7282,6 +7450,100 @@ window.openExpressOrderModal = function() {
     });
   }
 
+  // === AUTO-GUARDADO ANTI-RESET EN MÓVIL (Creaciones JJ) ===
+  const expressFormEl = document.getElementById("express-order-form");
+  const DRAFT_KEY = "jj_express_order_draft_active";
+  
+  if (expressFormEl) {
+    // Restaurar borrador si el celular pausó la pestaña al usar la cámara
+    try {
+      const savedDraft = sessionStorage.getItem(DRAFT_KEY);
+      if (savedDraft) {
+        const d = JSON.parse(savedDraft);
+        if (d.cliente && !document.getElementById("express-cliente").value) document.getElementById("express-cliente").value = d.cliente;
+        if (d.telefono && !document.getElementById("express-telefono").value) document.getElementById("express-telefono").value = d.telefono;
+        if (d.motivo && !document.getElementById("express-motivo").value) document.getElementById("express-motivo").value = d.motivo;
+        if (d.costo && !document.getElementById("express-costo").value) document.getElementById("express-costo").value = d.costo;
+        if (d.anticipo && !document.getElementById("express-anticipo").value) document.getElementById("express-anticipo").value = d.anticipo;
+        if (d.notaPago && !document.getElementById("express-nota-pago").value) document.getElementById("express-nota-pago").value = d.notaPago;
+        if (typeof window.recalcExpressPayment === "function") window.recalcExpressPayment();
+      }
+    } catch(err) {}
+
+    // Guardar en cada pulsación para proteger el formulario en teléfonos móviles
+    expressFormEl.addEventListener("input", () => {
+      try {
+        const draft = {
+          cliente: document.getElementById("express-cliente")?.value || "",
+          telefono: document.getElementById("express-telefono")?.value || "",
+          motivo: document.getElementById("express-motivo")?.value || "",
+          costo: document.getElementById("express-costo")?.value || "",
+          anticipo: document.getElementById("express-anticipo")?.value || "",
+          notaPago: document.getElementById("express-nota-pago")?.value || ""
+        };
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch(err) {}
+    });
+  }
+
+  // === SOPORTE DRAG & DROP PARA PC (Creaciones JJ) ===
+  const refBoxDrop = document.getElementById("express-ref-box");
+  if (refBoxDrop) {
+    refBoxDrop.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      refBoxDrop.style.background = "rgba(14,165,233,0.15)";
+      refBoxDrop.style.borderColor = "#0ea5e9";
+    });
+    refBoxDrop.addEventListener("dragleave", () => {
+      refBoxDrop.style.background = "";
+      refBoxDrop.style.borderColor = "#0ea5e9";
+    });
+    refBoxDrop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      refBoxDrop.style.background = "";
+      refBoxDrop.style.borderColor = "#0ea5e9";
+      const files = e.dataTransfer?.files;
+      if (files && files[0] && files[0].type.startsWith("image/")) {
+        const r = new FileReader();
+        r.onload = (ev) => {
+          expressRefBase64 = ev.target.result;
+          const pImg = document.getElementById("express-ref-img");
+          const pWrap = document.getElementById("express-ref-preview-wrap");
+          if (pImg) pImg.src = expressRefBase64;
+          if (pWrap) pWrap.style.display = "flex";
+          showToast("📸 Imagen de referencia soltada exitosamente.");
+        };
+        r.readAsDataURL(files[0]);
+      }
+    });
+  }
+
+  // === SOPORTE CTRL+V PARA PEGAR DESDE WHATSAPP WEB EN PC ===
+  const globalPasteHandler = (e) => {
+    if (!document.getElementById("modal")?.classList.contains("open")) return;
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const file = items[i].getAsFile();
+        const r = new FileReader();
+        r.onload = (ev) => {
+          expressRefBase64 = ev.target.result;
+          const pImg = document.getElementById("express-ref-img");
+          const pWrap = document.getElementById("express-ref-preview-wrap");
+          if (pImg) pImg.src = expressRefBase64;
+          if (pWrap) pWrap.style.display = "flex";
+          showToast("📋 Imagen pegada con éxito desde el portapapeles (Ctrl+V).");
+        };
+        r.readAsDataURL(file);
+        break;
+      }
+    }
+  };
+  window.removeEventListener("paste", window._jjExpressPasteHandler);
+  window._jjExpressPasteHandler = globalPasteHandler;
+  window.addEventListener("paste", globalPasteHandler);
+
   // Envío del Formulario
   const form = document.getElementById("express-order-form");
   if (form) {
@@ -7348,12 +7610,17 @@ window.openExpressOrderModal = function() {
           subItems: JSON.stringify(subItems),
           notas: notasIniciales,
           fotoNotaFisica: expressInvoiceBase64,
-          fotosReferencia: expressRefBase64 ? JSON.stringify([expressRefBase64]) : "[]"
+          fotosReferencia: expressRefBase64 ? JSON.stringify([expressRefBase64]) : "[]",
+          referenceImages: [
+            ...(expressRefBase64 ? [{ data: expressRefBase64, mimeType: "image/jpeg" }] : []),
+            ...(expressInvoiceBase64 ? [{ data: expressInvoiceBase64, mimeType: "image/jpeg", isNotaFisica: true }] : [])
+          ]
         };
 
         const res = await api("profile_create_order", payload);
         if (res && (res.ok || res.exito)) {
           showToast(`✅ Pedido ${res.id || ''} registrado con éxito en Mostrador.`);
+          sessionStorage.removeItem("jj_express_order_draft");
           closeModal();
           await refresh(true);
         } else {
@@ -11193,8 +11460,8 @@ window.openNewInventoryModal = function() {
         <input type="text" id="swal-inv-nombre" class="swal2-input" placeholder="Ej. Silicón frío 250cc, Vinil dorado" style="margin:0 0 8px 0; width:100%; box-sizing:border-box;">
         <label style="display:block; margin-bottom:4px; font-weight:bold;">Categoría:</label>
         <input type="text" id="swal-inv-cat" class="swal2-input" placeholder="Ej. Pegamentos, Papelería, Sublimación" value="Papelería" style="margin:0 0 8px 0; width:100%; box-sizing:border-box;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Proveedor Habitual:</label>
-        <input type="text" id="swal-inv-prov" class="swal2-input" placeholder="Ej. Prodimarca, Blindac, Americas" style="margin:0 0 8px 0; width:100%; box-sizing:border-box;">
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Proveedor Habitual (Opcional):</label>
+        <input type="text" id="swal-inv-prov" class="swal2-input" placeholder="Opcional - Dejar vacío si no se conoce" style="margin:0 0 8px 0; width:100%; box-sizing:border-box;">
         <label style="display:block; margin-bottom:4px; font-weight:bold;">Precio Estimado ($ USD):</label>
         <input type="number" id="swal-inv-precio" class="swal2-input" step="0.01" placeholder="0.00" value="1.00" style="margin:0; width:100%; box-sizing:border-box;">
       </div>
@@ -11206,7 +11473,7 @@ window.openNewInventoryModal = function() {
     preConfirm: () => {
       const n = document.getElementById("swal-inv-nombre")?.value.trim();
       const c = document.getElementById("swal-inv-cat")?.value.trim() || "General";
-      const p = document.getElementById("swal-inv-prov")?.value.trim() || "Proveedor";
+      const p = document.getElementById("swal-inv-prov")?.value.trim() || "Sin Proveedor";
       const pr = parseFloat(document.getElementById("swal-inv-precio")?.value || 0);
       if (!n) {
         Swal.showValidationMessage("El nombre del insumo es obligatorio");
