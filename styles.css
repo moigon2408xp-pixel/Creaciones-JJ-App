@@ -652,17 +652,25 @@ body {
 .search-bar-container {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 8px 14px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px 18px; /* Barra más alta, cómoda y estilizada */
+  min-height: 48px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.search-bar-container:focus-within {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
 }
 .search-bar-container input {
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 500;
   color: var(--text-main);
   outline: none;
 }
