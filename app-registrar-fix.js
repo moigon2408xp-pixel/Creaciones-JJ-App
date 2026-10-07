@@ -1,6 +1,162 @@
 
+// ALERTA NOCTURNA: Protección gerencial contra cronómetros corriendo toda la noche
+function checkOvernightActiveOrdersAlert() {
+  const allOrders = state.data?.allOrders || [];
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMin = now.getMinutes();
+  const isPastClosing = (currentHour > 21 || (currentHour === 21 && currentMin >= 30) || currentHour < 7);
+
+  const overnightOrders = allOrders.filter(o => {
+    if (o.estado !== 'En proceso') return false;
+    if (!o.inicioProduccion) return false;
+    const startMs = parseSafeTimestampMs(o.inicioProduccion);
+    if (isNaN(startMs)) return false;
+    const startHour = new Date(startMs).getHours();
+    return isPastClosing || (Date.now() - startMs > 7 * 3600 * 1000);
+  });
+
+  if (overnightOrders.length === 0) return '';
+
+  return `
+    <div style="background:rgba(239, 68, 68, 0.12); border:1.5px solid #ef4444; border-radius:10px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:18px;">⚠️</span>
+        <div>
+          <strong style="color:#ef4444; font-size:12.5px;">ALERTA NOCTURNA GERENCIAL:</strong>
+          <span style="font-size:12px; color:var(--text-main);">
+            Hay ${overnightOrders.length} pedido(s) activos en mesa pasadas las 9:30 PM (${overnightOrders.map(o => '#' + o.id + ' ' + (o.responsable || 'Taller')).join(', ')}).
+          </span>
+        </div>
+      </div>
+      <button type="button" onclick="window.autoPauseOvernightOrders()" style="background:#ef4444; color:white; border:none; padding:5px 12px; border-radius:6px; font-size:11.5px; font-weight:bold; cursor:pointer;">
+        ⏱️ Pausar Pedidos Olvidados
+      </button>
+    </div>
+  `;
+}
+
+window.autoPauseOvernightOrders = async function() {
+  const allOrders = (state.data?.allOrders || []).filter(o => o.estado === 'En proceso');
+  if (allOrders.length === 0) {
+    showToast("No hay pedidos activos para pausar.");
+    return;
+  }
+  if (!confirm(`¿Deseas pausar automáticamente los ${allOrders.length} pedidos activos en mesa para congelar el tiempo nocturno?`)) return;
+
+  for (const o of allOrders) {
+    try {
+      await api("profile_update_order", {
+        id: o.id,
+        user: "Gerencia (Cierre Nocturno)",
+        changes: {
+          estado: "Pausado",
+          ultimaPausa: new Date().toISOString(),
+          nota: "⏸️ Pausado automáticamente por protección de horario nocturno (21:30)."
+        }
+      });
+    } catch(e) {}
+  }
+  showToast("✅ Pedidos nocturnos pausados con éxito.");
+  await refresh(true);
+};
+
+
+// Función gerencial para corregir montos inflados o errores de digitación en facturas
+window.fixProviderInvoiceAmounts = function(id) {
+  const list = getStoredProvidersData();
+  const inv = list.find(i => String(i.id) === String(id));
+  if (!inv) return;
+
+  Swal.fire({
+    title: `🛠️ Corregir Montos (${inv.proveedor})`,
+    html: `
+      <div style="text-align:left; font-size:12.5px;">
+        <p style="color:var(--text-muted); margin-bottom:10px;">
+          Corrige manualmente el Total o Abonado si se ingresó un monto en Bolívares por error (Ej. $79,966).
+        </p>
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Monto Total Real de la Nota ($):</label>
+        <input type="number" id="swal-fix-total" class="swal2-input" step="0.01" value="${inv.montoTotal}" style="margin:0 0 10px 0; width:100%; box-sizing:border-box;">
+
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Monto Total Abonado Real ($):</label>
+        <input type="number" id="swal-fix-abonado" class="swal2-input" step="0.01" value="${inv.abonado || 0}" style="margin:0 0 10px 0; width:100%; box-sizing:border-box;">
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: "Guardar Corrección",
+    confirmButtonColor: "#f59e0b",
+    cancelButtonText: "Cancelar",
+    preConfirm: () => {
+      const tot = parseFloat(document.getElementById("swal-fix-total")?.value);
+      const abo = parseFloat(document.getElementById("swal-fix-abonado")?.value);
+      if (isNaN(tot) || tot <= 0 || isNaN(abo) || abo < 0) {
+        Swal.showValidationMessage("Ingresa montos numéricos válidos");
+        return false;
+      }
+      return { total: tot, abonado: abo };
+    }
+  }).then(res => {
+    if (res.isConfirmed && res.value) {
+      inv.montoTotal = res.value.total;
+      inv.abonado = res.value.abonado;
+      inv.saldoPendiente = Math.max(0, parseFloat((inv.montoTotal - inv.abonado).toFixed(2)));
+      inv.estado = inv.saldoPendiente <= 0.01 ? "Pagada" : (inv.abonado > 0 ? "Parcial" : "Pendiente");
+
+      // Si había abonos inflados, resetear la lista de abonos a un registro limpio con el nuevo monto
+      if (inv.abonos && inv.abonos.length > 0) {
+        inv.abonos = [{
+          fecha: new Date().toLocaleDateString('es-VE') + ' ' + new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
+          monto: inv.abonado,
+          moneda: "USD",
+          referencia: "Corrección manual de saldo gerencial",
+          registradoPor: state.session?.name || "Gerencia"
+        }];
+      }
+
+      saveStoredProvidersData(list);
+      showToast(`✅ Montos actualizados: Total $${inv.montoTotal.toFixed(2)} | Abonado $${inv.abonado.toFixed(2)} | Saldo $${inv.saldoPendiente.toFixed(2)}`);
+      closeModal();
+      window.openProviderInvoiceDetailModal(inv.id);
+      if (typeof render === "function") render();
+    }
+  });
+};
+
+
+// Helper global para mostrar miniaturas de Google Drive sin romper el <img>
+function formatDriveThumbnailUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('data:image')) return url;
+  try {
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://lh3.googleusercontent.com/d/${match[1]}=w400`;
+    }
+  } catch(e) {}
+  return url;
+}
+
+
 // ESTADO Y FILTRO POR CORTES PARA GERENCIA (HISTORIAL JJ)
-window._jjHistoryCut = window._jjHistoryCut || "semana"; // 'hoy', 'semana', 'mes', 'todos'
+
+// ESTADO Y FILTRO POR CORTES PARA GERENCIA (HISTORIAL & ACTIVOS JJ)
+window._jjHistoryCut = window._jjHistoryCut || "semana"; // 'hoy', 'semana', 'mes', 'rango', 'todos'
+window._jjHistoryType = window._jjHistoryType || "todos";
+window._jjHistoryFrom = window._jjHistoryFrom || "";
+window._jjHistoryTo = window._jjHistoryTo || "";
+
+window.setHistoryCut = function(cut) {
+  window._jjHistoryCut = cut;
+  render();
+};
+
+window.setCustomDateRange = function(fromVal, toVal) {
+  window._jjHistoryCut = "rango";
+  window._jjHistoryFrom = fromVal;
+  window._jjHistoryTo = toVal;
+  render();
+};
+
 window._jjHistoryType = window._jjHistoryType || "todos";
 
 window.setHistoryCut = function(cut) {
@@ -1182,7 +1338,7 @@ function nowView() {
       </div>
     </div>` : '';
 
-  return `${criticalBanner}${state.offline ? '<p class="offline">Mostrando informaci\u00f3n guardada localmente.</p>' : ""}
+  return `${checkOvernightActiveOrdersAlert()}${criticalBanner}${state.offline ? '<p class="offline">Mostrando informaci\u00f3n guardada localmente.</p>' : ""}
   ${next ? `<article class="hero-card" style="background:var(--bg-card); padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md); margin-bottom:20px;"><p class="eyebrow">TU SIGUIENTE TRABAJO PRIORITARIO (${escapeHtml(next.id)})</p>${priorityPill(next)}<h2 style="margin-top:10px;">${escapeHtml(next.cliente)}</h2><p style="color:var(--text-muted); margin-bottom:12px;">${escapeHtml(next.tipo)} ${next.motivo ? `(${escapeHtml(next.motivo)})` : ''} · Entrega: ${escapeHtml(formatDate(next.entrega))}</p><div class="actions"><button class="primary-button" data-action="detail" data-id="${escapeHtml(next.id)}">Ver detalle completo</button></div></article>` : '<div class="empty"><strong>Tu cola de trabajo está al día.</strong></div>'}
   <p class="section-heading" style="font-weight:800; font-size:14px; letter-spacing:1px; margin-bottom:10px;">CRÍTICOS DEL EQUIPO</p>
   <div class="order-list">${critical.map(orderCard).join("") || '<div class="team-note">No hay pedidos críticos en el taller.</div>'}</div>`;
@@ -1214,11 +1370,25 @@ function historyView() {
     if (currentCut === "hoy") {
       return fDate.toDateString() === now.toDateString();
     } else if (currentCut === "semana") {
-      const weekAgo = new Date();
-      weekAgo.setDate(now.getDate() - 7);
-      return fDate >= weekAgo;
+      // Semana en curso: DESDE EL LUNES hasta hoy (no 7 días rodantes)
+      const startOfWeek = new Date(now);
+      const day = startOfWeek.getDay();
+      const diff = (day === 0 ? -6 : 1) - day; // Lunes = día 1
+      startOfWeek.setDate(startOfWeek.getDate() + diff);
+      startOfWeek.setHours(0, 0, 0, 0);
+      return fDate >= startOfWeek && fDate <= now;
     } else if (currentCut === "mes") {
       return fDate.getMonth() === now.getMonth() && fDate.getFullYear() === now.getFullYear();
+    } else if (currentCut === "rango") {
+      if (window._jjHistoryFrom) {
+        const fromD = new Date(window._jjHistoryFrom + "T00:00:00");
+        if (fDate < fromD) return false;
+      }
+      if (window._jjHistoryTo) {
+        const toD = new Date(window._jjHistoryTo + "T23:59:59");
+        if (fDate > toD) return false;
+      }
+      return true;
     }
     return true;
   }).sort((a, b) => {
@@ -1244,7 +1414,30 @@ function historyView() {
     ` : ''}
     
     <!-- PANEL DE CORTES GERENCIALES (JEFES CREACIONES JJ) -->
-    <div style="background:var(--bg-card, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+    <!-- PANEL DE CORTES GERENCIALES COMPACTO & RANGO PERSONALIZADO -->
+    <div style="background:var(--bg-card, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:12px; padding:10px 14px; margin-bottom:14px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <strong style="color:var(--text-main); font-size:13px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE:
+          </strong>
+          <div style="display:inline-flex; gap:4px; flex-wrap:wrap;">
+            <button type="button" class="secondary-button" style="padding:3px 8px; font-size:11px; border-radius:6px; font-weight:700; ${window._jjHistoryCut === 'hoy' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('hoy')">📅 Hoy</button>
+            <button type="button" class="secondary-button" style="padding:3px 8px; font-size:11px; border-radius:6px; font-weight:700; ${window._jjHistoryCut === 'semana' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('semana')" title="Lunes a hoy">⚡ Esta Semana (Lun-Hoy)</button>
+            <button type="button" class="secondary-button" style="padding:3px 8px; font-size:11px; border-radius:6px; font-weight:700; ${window._jjHistoryCut === 'mes' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('mes')">📆 Este Mes</button>
+            <button type="button" class="secondary-button" style="padding:3px 8px; font-size:11px; border-radius:6px; font-weight:700; ${window._jjHistoryCut === 'todos' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('todos')">🌐 Todos</button>
+          </div>
+        </div>
+
+        <!-- Rango Personalizado Compacto -->
+        <div style="display:inline-flex; align-items:center; gap:6px; font-size:11px;">
+          <span style="color:var(--text-muted); font-weight:bold;">Rango:</span>
+          <input type="date" id="hist-custom-from" value="${window._jjHistoryFrom || ''}" style="padding:2px 6px; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:11px;">
+          <span>a</span>
+          <input type="date" id="hist-custom-to" value="${window._jjHistoryTo || ''}" style="padding:2px 6px; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:11px;">
+          <button type="button" class="secondary-button" onclick="window.setCustomDateRange(document.getElementById('hist-custom-from').value, document.getElementById('hist-custom-to').value)" style="padding:2px 8px; font-size:11px; border-radius:4px; background:#10b981; color:white; border:none; font-weight:bold;">Filtrar</button>
+        </div>
+      </div>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
         <div>
           <strong style="color:var(--text-main); font-size:14px; display:flex; align-items:center; gap:6px;">
@@ -8257,13 +8450,18 @@ function providersView() {
             </thead>
             <tbody>
               ${invoices.filter(inv => {
-                const isPaid = Number(inv.saldoPendiente || 0) <= 0.01;
-                const fEnt = inv.fechaEntrega ? new Date(inv.fechaEntrega) : null;
-                const isOld = fEnt && !isNaN(fEnt.getTime()) && ((new Date() - fEnt) / 86400000 > 60);
+                const saldo = Number(inv.saldoPendiente || 0);
+                const isPaid = saldo <= 0.01;
                 
                 const filter = window._jjProvFilter || 'activas';
-                if (filter === 'activas') return !isPaid && !isOld;
-                if (filter === 'archivadas') return isPaid || isOld;
+                if (filter === 'activas') {
+                  // Deudas Activas: TODO lo que tenga saldo pendiente mayor a $0 (incluyendo notas vencidas como CAROMA)
+                  return !isPaid;
+                }
+                if (filter === 'archivadas') {
+                  // Archivadas / Pagadas: ÚNICAMENTE facturas totalmente pagadas con saldo $0.00
+                  return isPaid;
+                }
                 return true;
               }).map(inv => {
                 const isOverdue = inv.fechaVencimiento && inv.fechaVencimiento < todayStr && inv.saldoPendiente > 0.01;
@@ -8634,7 +8832,7 @@ window.openProviderInvoiceDetailModal = function(id) {
         <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:6px;">
           ${inv.fotos.map((f, idx) => `
             <a href="${f}" target="_blank" title="Abrir imagen completa">
-              <img src="${f}" style="width:90px; height:120px; object-fit:cover; border-radius:6px; border:1px solid #10b981;">
+              <img src="${formatDriveThumbnailUrl(f)}" onerror="if(!this.dataset.err){this.dataset.err=1; this.src='https://drive.google.com/thumbnail?id=' + (this.src.match(/id=([a-zA-Z0-9_-]+)/)?.[1] || '') + '&sz=w400';}" style="width:90px; height:120px; object-fit:cover; border-radius:6px; border:1.5px solid #10b981; background:var(--bg-main);">
             </a>
           `).join('')}
         </div>
