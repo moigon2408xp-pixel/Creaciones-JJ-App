@@ -168,29 +168,22 @@ function safeParseDate(value) {
   
   if (str.includes(" - ")) str = str.split(" - ")[0];
   if (str.includes(" a las ")) str = str.split(" a las ")[0];
-
-  // Limpiar sufijos entre paréntesis como "(hora de Venezuela)" o "(GMT-4)"
-  str = str.replace(/\s*\([^)]*\)/g, "").trim();
-
-  // 0. Si viene como YYYY-MM-DD simple (evita desfase UTC de medianoche)
-  const ymdOnly = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (ymdOnly) {
-    const y = parseInt(ymdOnly[1], 10);
-    const m = parseInt(ymdOnly[2], 10) - 1;
-    const d = parseInt(ymdOnly[3], 10);
-    const parsed = new Date(y, m, d, 12, 0, 0);
-    if (!isNaN(parsed.getTime())) return parsed;
-  }
   
   // 1. Si viene como ISO (ej: 2026-09-04T13:00:00 o 2026-09-04T13:00:00.000Z)
   if (str.includes("T")) {
+    // Si contiene Z o indicador de zona horaria (+/-HH:mm), permitir que el motor de JavaScript
+    // convierta la hora UTC a la hora local exacta de Venezuela sin desfase de 4 horas
+    if (/Z|[+-]\d{2}:?\d{2}/i.test(str)) {
+      const parsedIso = new Date(str);
+      if (!isNaN(parsedIso.getTime())) return parsedIso;
+    }
     const parts = str.split("T");
     const dateParts = parts[0].split("-");
     if (dateParts.length === 3) {
       const year = parseInt(dateParts[0], 10);
       const month = parseInt(dateParts[1], 10) - 1;
       const day = parseInt(dateParts[2], 10);
-      let hours = 12;
+      let hours = 18;
       let minutes = 0;
       if (parts[1]) {
         const timeParts = parts[1].split(":");
@@ -211,7 +204,7 @@ function safeParseDate(value) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
-      let hours = 12;
+      let hours = 18;
       let minutes = 0;
       const timeMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
       if (timeMatch) {
@@ -226,22 +219,8 @@ function safeParseDate(value) {
     }
   }
   
-  // 3. Parser estándar tras haber quitado los paréntesis
   const d = new Date(str);
-  if (!isNaN(d.getTime())) return d;
-
-  // 4. Si viene con nombres de meses en inglés como "Wed Sep 23 2026 20:00:00 GMT-0400"
-  const monMatch = str.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})\s+(\d{4})/i);
-  if (monMatch) {
-    const months = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
-    const m = months[monMatch[1].toLowerCase().slice(0, 3)];
-    const day = parseInt(monMatch[2], 10);
-    const year = parseInt(monMatch[3], 10);
-    const parsed = new Date(year, m, day, 12, 0, 0);
-    if (!isNaN(parsed.getTime())) return parsed;
-  }
-  
-  return null;
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function formatDate(value) {
@@ -259,20 +238,6 @@ function formatDate(value) {
   } catch (e) {
     return String(value);
   }
-}
-
-// Formatear fecha simple (DD/MM/YYYY) para mostrar en tablas
-function formatSimpleDate(value) {
-  if (!value) return 'N/A';
-  const date = safeParseDate(value);
-  if (!date) {
-    let clean = String(value).replace(/\s*\([^)]*\)/g, "").trim();
-    return clean || 'N/A';
-  }
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
 }
 
 // Universal Normalizers
@@ -441,25 +406,9 @@ const isReception = () => {
   const r = String(state.session?.role || "").toLowerCase().trim();
   return r === "recepcionista" || r === "mostrador";
 };
-const canAccessScreen = (screen) => {
-  const r = String(state.session?.role || "").toLowerCase().trim();
-  
-  // Gerencia/jefes tienen acceso a todo
-  if (["manager", "jefe", "jefa"].includes(r)) return true;
-  
-  // Recepcionistas: acceso limitado + pedidos activos para gestión
-  if (r === "recepcionista" || r === "mostrador") {
-    const allowedScreens = ["modules", "now", "queue", "team", "inventory", "workshopPrices", "schedules", "history", "settings"];
-    return allowedScreens.includes(screen);
-  }
-  
-  // Trabajadores: acceso limitado
-  const workerAllowed = ["modules", "now", "queue", "team", "history", "settings"];
-  return workerAllowed.includes(screen);
-};
 const isPausedProductionStatus = (est) => {
   const s = String(est || "").toLowerCase().trim();
-  return s === "pausado" || s === "esperando imprenta" || s === "esperando planchado" || s === "en espera de planchado" || s === "en espera de imprenta";
+  return s === "pausado" || s === "esperando imprenta" || s === "esperando planchado";
 };
 const productionStatusList = (includeEntregado) => {
   const list = ["Pendiente", "En proceso", "Pausado", "Esperando Imprenta", "Esperando Planchado", "Terminado"];
@@ -908,7 +857,6 @@ async function refresh(showMessage = true) {
     store.set("pp_profile_types", state.frequentTypes);
     store.set("pp_profile_motivos", state.frequentMotivos);
     store.set("pp_profile_schedules", rawSchedules);
-    store.set("pp_suggestions", rawData.suggestions || []);
 
     // Detección de orden de actualización forzada por el Manager
     const serverVer = String(rawData.appVersion || rawData.version || "");
@@ -1296,16 +1244,15 @@ function historyView() {
     ` : ''}
     
     <!-- PANEL DE CORTES GERENCIALES (JEFES CREACIONES JJ) -->
-    <div style="background:var(--card-bg, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+    <div style="background:var(--bg-card, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
         <div>
           <strong style="color:var(--text-main); font-size:14px; display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS & RENDIMIENTO:
+            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS &amp; RENDIMIENTO:
           </strong>
           <span style="font-size:12px; color:var(--text-muted);">Visualiza trabajos completados según el rango seleccionado.</span>
         </div>
         
-        <!-- Píldoras de corte de tiempo -->
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'hoy' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('hoy')">📅 Hoy</button>
           <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'semana' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('semana')">⚡ Esta Semana</button>
@@ -1314,7 +1261,6 @@ function historyView() {
         </div>
       </div>
 
-      <!-- Resumen en métricas para gerencia -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
         <div style="background:rgba(14,165,233,0.08); border-left:3.5px solid #0ea5e9; padding:8px 12px; border-radius:8px;">
           <span style="font-size:11px; font-weight:800; color:#0284c7;">TOTAL CORTE</span>
@@ -1325,24 +1271,23 @@ function historyView() {
           <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('topper')).length}</div>
         </div>
         <div style="background:rgba(168,85,247,0.08); border-left:3.5px solid #a855f7; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF & SUBLIMACIÓN</span>
+          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF &amp; SUBLIMACIÓN</span>
           <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('dtf') || String(o.tipo).toLowerCase().includes('sublim')).length}</div>
         </div>
         <div style="background:rgba(245,158,11,0.08); border-left:3.5px solid #f59e0b; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS & PAPELERÍA</span>
+          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS &amp; PAPELERÍA</span>
           <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => !String(o.tipo).toLowerCase().includes('topper') && !String(o.tipo).toLowerCase().includes('dtf')).length}</div>
         </div>
       </div>
 
-      <!-- Filtro por tipo de producto -->
       <div style="margin-top:10px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:12px;">
         <span style="color:var(--text-muted); font-weight:bold;">Filtrar tipo:</span>
         <select onchange="window.setHistoryType(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:12px;">
           <option value="todos" ${window._jjHistoryType === 'todos' ? 'selected' : ''}>Todos los tipos</option>
-          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D & Pastelería</option>
-          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil & Sublimación</option>
-          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa & Regalos</option>
-          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes & Académico</option>
+          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D &amp; Pastelería</option>
+          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil &amp; Sublimación</option>
+          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa &amp; Regalos</option>
+          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes &amp; Académico</option>
         </select>
       </div>
     </div>
@@ -1376,8 +1321,7 @@ function historyView() {
             </div>
             <div class="meta" data-action="detail" data-id="${escapeHtml(order.id)}" data-scope="finished">
               Entrega: ${escapeHtml(formatDate(order.entrega))}<br/>
-              ${order.finProduccion ? `🏁 <strong>Terminado:</strong> <span style="color:#059669; font-weight:700;">${escapeHtml(formatDate(order.finProduccion))}</span><br/>` : 
-                `<span style="color:#f59e0b; font-weight:bold;">⚠️ Sin fecha de cierre</span> <button type="button" onclick="window.editOrderFinishDate('${escapeHtml(order.id)}')" style="background:#f59e0b; color:white; border:none; padding:2px 6px; font-size:10px; border-radius:4px; cursor:pointer; margin-left:4px;">✏️ Agregar fecha</button><br/>`}
+              ${order.finProduccion ? `🏁 <strong>Terminado:</strong> <span style="color:#059669; font-weight:700;">${escapeHtml(formatDate(order.finProduccion))}</span><br/>` : ''}
               Responsable: ${escapeHtml(order.responsable)}<br/>
               ${order.telefono ? `📞 Teléfono: <strong>${escapeHtml(order.telefono)}</strong><br/>` : ''}
               ⏱️ Tiempo invertido: <strong>${order.duracionRealMin || 0} min</strong><br/>
@@ -1447,16 +1391,15 @@ function teamView() {
     </div>
     
     <!-- PANEL DE CORTES GERENCIALES (JEFES CREACIONES JJ) -->
-    <div style="background:var(--card-bg, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+    <div style="background:var(--bg-card, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
         <div>
           <strong style="color:var(--text-main); font-size:14px; display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS & RENDIMIENTO:
+            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS &amp; RENDIMIENTO:
           </strong>
           <span style="font-size:12px; color:var(--text-muted);">Visualiza trabajos completados según el rango seleccionado.</span>
         </div>
         
-        <!-- Píldoras de corte de tiempo -->
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'hoy' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('hoy')">📅 Hoy</button>
           <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'semana' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('semana')">⚡ Esta Semana</button>
@@ -1465,7 +1408,6 @@ function teamView() {
         </div>
       </div>
 
-      <!-- Resumen en métricas para gerencia -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
         <div style="background:rgba(14,165,233,0.08); border-left:3.5px solid #0ea5e9; padding:8px 12px; border-radius:8px;">
           <span style="font-size:11px; font-weight:800; color:#0284c7;">TOTAL CORTE</span>
@@ -1476,24 +1418,23 @@ function teamView() {
           <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('topper')).length}</div>
         </div>
         <div style="background:rgba(168,85,247,0.08); border-left:3.5px solid #a855f7; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF & SUBLIMACIÓN</span>
+          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF &amp; SUBLIMACIÓN</span>
           <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('dtf') || String(o.tipo).toLowerCase().includes('sublim')).length}</div>
         </div>
         <div style="background:rgba(245,158,11,0.08); border-left:3.5px solid #f59e0b; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS & PAPELERÍA</span>
+          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS &amp; PAPELERÍA</span>
           <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => !String(o.tipo).toLowerCase().includes('topper') && !String(o.tipo).toLowerCase().includes('dtf')).length}</div>
         </div>
       </div>
 
-      <!-- Filtro por tipo de producto -->
       <div style="margin-top:10px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:12px;">
         <span style="color:var(--text-muted); font-weight:bold;">Filtrar tipo:</span>
         <select onchange="window.setHistoryType(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:12px;">
           <option value="todos" ${window._jjHistoryType === 'todos' ? 'selected' : ''}>Todos los tipos</option>
-          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D & Pastelería</option>
-          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil & Sublimación</option>
-          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa & Regalos</option>
-          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes & Académico</option>
+          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D &amp; Pastelería</option>
+          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil &amp; Sublimación</option>
+          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa &amp; Regalos</option>
+          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes &amp; Académico</option>
         </select>
       </div>
     </div>
@@ -2134,22 +2075,6 @@ function modulesView() {
             <span>Ver Métricas</span> <i class="fas fa-arrow-right"></i>
           </div>
         </div>
-
-        <!-- 4: Sugerencias y Problemas (Todos los usuarios) -->
-        <div class="sics-bento-card" onclick="window.openSuggestionsModal()">
-          <div>
-            <div class="sics-bento-icon" style="background:rgba(245,158,11,0.12); color:#f59e0b;">
-              <i class="fas fa-lightbulb"></i>
-            </div>
-            <div class="sics-bento-title">Sugerencias &amp; Problemas</div>
-            <div class="sics-bento-desc">
-              Reporta problemas o envía sugerencias para mejorar el sistema. Gerencia puede ver y gestionar.
-            </div>
-          </div>
-          <div class="sics-bento-action">
-            <span>Reportar</span> <i class="fas fa-arrow-right"></i>
-          </div>
-        </div>
         ` : ''}
 
         <!-- 4: Control de Proveedores y Cuentas por Pagar (Solo Jefes) -->
@@ -2292,8 +2217,7 @@ function reportsView() {
   const filterByPeriod = (orderList) => {
     const now = new Date();
     return orderList.filter(o => {
-      // Priorizar finProduccion (fecha real de terminación) para pedidos completados
-      const rawDate = o.finProduccion || o.fechaCierre || o.entrega || o.creado || "";
+      const rawDate = o.fechaCierre || o.entrega || o.creado || "";
       const d = safeParseDate(rawDate);
       if (!d) return true;
       if (currentFilter === 'today') {
@@ -2345,16 +2269,6 @@ function reportsView() {
     // Compara fecha de cierre con fecha de entrega
     return cie <= ent;
   });
-  
-  // Pedidos terminados con retraso
-  const delayedFinished = periodFinishedOrders.filter(o => {
-    const ent = safeParseDate(o.entrega);
-    const cie = safeParseDate(o.fechaCierre) || safeParseDate(o.finProduccion);
-    
-    if (!ent || !cie) return false;
-    return cie > ent; // Terminado después de la fecha de entrega
-  });
-  
   const complianceRate = periodFinishedOrders.length ? Math.round((onTimeFinished.length / periodFinishedOrders.length) * 100) : 100;
 
   // Promedio en mesa
@@ -2480,14 +2394,6 @@ function reportsView() {
           <div style="font-size:28px; font-weight:900; color:var(--text-main);">${avgMins} <span style="font-size:14px; font-weight:bold; color:var(--text-muted);">min</span></div>
           <div style="font-size:11px; color:var(--text-muted);">Por orden física finalizada</div>
         </div>
-
-        <div class="sics-metric-card">
-          <div style="font-size:11px; font-weight:700; color:${delayedFinished.length ? '#ef4444' : '#10b981'}; text-transform:uppercase; margin-bottom:4px;">
-            <i class="fas fa-clock"></i> ENTREGADOS CON RETRASO
-          </div>
-          <div style="font-size:28px; font-weight:900; color:${delayedFinished.length ? '#ef4444' : '#10b981'};">${delayedFinished.length}</div>
-          <div style="font-size:11px; color:var(--text-muted);">De ${periodFinishedOrders.length} completados</div>
-        </div>
       </div>
 
       <!-- Detalles de Pedidos según Filtro -->
@@ -2519,43 +2425,30 @@ function reportsView() {
                 <th>Cliente</th>
                 <th>Tipo</th>
                 <th>Responsable</th>
-                <th>Entrega Programada</th>
-                <th>Fecha Real Término</th>
+                <th>Entrega</th>
                 <th>Estado</th>
                 <th>Tiempo</th>
-                <th>Entrega</th>
               </tr>
             </thead>
             <tbody>
               ${(viewType === 'completed' ? periodFinishedOrders : 
                  viewType === 'active' ? periodActiveOrders : 
                  viewType === 'overdue' ? overdueOrders : 
-                 [...periodActiveOrders, ...periodFinishedOrders]).map(o => {
-                const actualFinishDate = safeParseDate(o.fechaCierre) || safeParseDate(o.finProduccion);
-                const scheduledDate = safeParseDate(o.entrega);
-                const isDelayed = actualFinishDate && scheduledDate && actualFinishDate > scheduledDate;
-                
-                return `
+                 [...periodActiveOrders, ...periodFinishedOrders]).map(o => `
                 <tr onclick="navigate('team'); setTimeout(() => document.querySelector('[data-id="${escapeHtml(o.id)}"]')?.click(), 100);" style="cursor:pointer;">
                   <td style="font-family:monospace; font-weight:bold;">${escapeHtml(o.id)}</td>
                   <td style="font-weight:bold;">${escapeHtml(o.cliente)}</td>
                   <td>${escapeHtml(o.tipo)}</td>
                   <td>${escapeHtml(o.responsable)}</td>
                   <td>${escapeHtml(formatDate(o.entrega))}</td>
-                  <td>${actualFinishDate ? escapeHtml(formatDate(actualFinishDate)) : '-'}</td>
                   <td>
                     <span style="padding:2px 8px; border-radius:10px; font-size:10.5px; font-weight:bold; background:${o.estado === 'Terminado' || o.estado === 'Entregado' ? 'rgba(16,185,129,0.2); color:#10b981;' : o.estado === 'En proceso' ? 'rgba(59,130,246,0.2); color:#3b82f6;' : 'rgba(245,158,11,0.2); color:#f59e0b;'}">
                       ${escapeHtml(o.estado)}
                     </span>
                   </td>
                   <td style="font-weight:bold;">${o.duracionRealMin ? o.duracionRealMin + ' min' : '-'}</td>
-                  <td>
-                    ${isDelayed ? '<span style="color:#ef4444; font-weight:bold;">⚠️ Retrasado</span>' : 
-                      actualFinishDate && scheduledDate && actualFinishDate <= scheduledDate ? '<span style="color:#10b981; font-weight:bold;">✅ A tiempo</span>' : 
-                      '-'}
-                  </td>
                 </tr>
-              `;}).join('')}
+              `).join('')}
             </tbody>
           </table>
         </div>
@@ -3586,19 +3479,8 @@ function render() {
     const navLeadBtn = document.querySelector(".nav-lead-only");
     if (navLeadBtn) navLeadBtn.style.display = isLead() ? "inline-flex" : "none";
 
-    // Ocultar pestañas de gerencia para recepcionistas
-    document.querySelectorAll(".manager-only-tab").forEach(btn => {
-      btn.style.display = isLead() ? "inline-flex" : "none";
-    });
-
     const screenEl = $("#screen");
     if (screenEl) {
-      // Verificar acceso antes de renderizar
-      if (!canAccessScreen(state.screen)) {
-        console.log("Acceso denegado a pantalla:", state.screen, "para rol:", state.session?.role);
-        state.screen = "modules"; // Redirigir a módulos
-      }
-      
       const views = {
         modules: modulesView,
         now: nowView, queue: queueView, team: teamView,
@@ -3713,7 +3595,7 @@ function detail(order) {
       <div style="background:rgba(16,185,129,0.12); border:1.5px solid #10b981; border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
         <div>
           <strong style="color:#10b981; font-size:13px; display:block;"><i class="fas fa-stopwatch fa-spin"></i> CRONÓMETRO EN VIVO:</strong>
-          <span style="font-size:12px; color:var(--text-main);">Llevas <strong id="modal-live-stopwatch-text">${formatMinutesToHuman(elMin)}</strong> de trabajo productivo (${order.diseno === 'En proceso' ? '🎨 Diseñando' : '⚙️ En mesa'}).</span>
+          <span style="font-size:12px; color:var(--text-main);">Llevas <strong id="modal-live-stopwatch-text">${formatMinutesToHuman(elMin)}</strong> de trabajo físico en mesa.</span>
         </div>
         <span class="live-stopwatch-badge live-stopwatch-active" id="modal-live-stopwatch-badge" data-order-id="${escapeHtml(order.id)}" style="font-size:13px; padding:6px 12px;">⏱️ ${elMin} min</span>
       </div>
@@ -3756,7 +3638,7 @@ function detail(order) {
     gatekeeperBanner = `
       <div style="background:linear-gradient(135deg, rgba(14,165,233,0.1), rgba(139,92,246,0.1)); border:2px solid #0ea5e9; border-radius:14px; padding:14px; margin-bottom:16px;">
         <div style="font-weight:900; color:#0284c7; font-size:14px; display:flex; align-items:center; gap:8px;">
-          <i class="fas fa-bolt" style="color:#0ea5e9;"></i> ⏱️ INICIAR TIEMPO PRODUCTIVO: SELECCIONA FASE DE TRABAJO
+          <i class="fas fa-bolt" style="color:#0ea5e9;"></i> PASO OBLIGATORIO: ¿EN QUÉ FASE COMENZARÁS ESTE PEDIDO?
         </div>
         <p style="font-size:12px; color:var(--text-muted); margin:6px 0 12px 0;">
           Para registrar las métricas exactas de tiempo y evitar confusiones en el taller, indica la etapa en que iniciarás:
@@ -3765,7 +3647,7 @@ function detail(order) {
           <div class="gatekeeper-choice-card diseno" onclick="setOrderPhase('${escapeHtml(order.id)}', 'diseno')">
             <i class="fas fa-palette" style="font-size:1.8rem; color:#8b5cf6;"></i>
             <strong style="color:#7c3aed; font-size:13px;">Fase de Diseño Gráfico</strong>
-            <span style="font-size:11px; color:var(--text-muted);">Diseño de topper, DTF o vectores en PC. ⏱️ Inicia cronómetro de diseño productivo.</span>
+            <span style="font-size:11px; color:var(--text-muted);">Elaboración previa en PC. No consume tiempo de mesa de producción.</span>
           </div>
           <div class="gatekeeper-choice-card produccion" onclick="setOrderPhase('${escapeHtml(order.id)}', 'produccion')">
             <i class="fas fa-tools" style="font-size:1.8rem; color:#10b981;"></i>
@@ -4019,43 +3901,15 @@ function detail(order) {
       openFinishModal(order, val);
     } else {
       let pauseNote = "";
-      const isPauseStatus = isPausedProductionStatus(val);
-      
-      // Solo para 'Pausado' se solicita motivo al usuario.
-      // Para 'Esperando Imprenta' y 'Esperando Planchado' NO se pide motivo repetitivo,
-      // se asigna automáticamente la nota descriptiva y se congela el tiempo.
       if (val === "Pausado") {
-        pauseNote = prompt("Motivo de la pausa (ej: Falta de material, corte de luz, etc.):");
-        if (pauseNote === null) {
-          e.target.value = order.estado;
-          return;
-        }
-        pauseNote = pauseNote.trim() || "Pausa de producción";
-      } else if (val === "Esperando Imprenta") {
-        pauseNote = "En espera de imprenta";
-      } else if (val === "Esperando Planchado") {
-        pauseNote = "En espera de planchado";
+        pauseNote = prompt("Motivo de la pausa (ej: Esperando material, respuesta del cliente...):");
+        if (pauseNote === null) return;
       }
-      
       try {
-        const nowIso = new Date().toISOString();
-        const changes = { estado: val, nota: pauseNote };
-        
-        // Si es un estado de pausa, registrar el momento de la pausa
-        if (isPauseStatus) {
-          changes.ultimaPausa = nowIso;
-          order.ultimaPausa = nowIso;
-        }
-        order.estado = val;
-        if (state.selectedOrder && state.selectedOrder.id === order.id) {
-          state.selectedOrder.estado = val;
-          if (isPauseStatus) state.selectedOrder.ultimaPausa = nowIso;
-        }
-        
         await api("profile_update_order", {
           id: order.id,
           user: state.session?.name || "Usuario",
-          changes: changes
+          changes: { estado: val, nota: pauseNote }
         });
         closeModal();
         await refresh(false);
@@ -4429,7 +4283,6 @@ function openFinishModal(order, targetStatus) {
           comentarioCierre: commentVal,
           duracionManualMin: finalDuration,
           duracionRealMin: finalDuration,
-          finProduccion: new Date().toISOString(),
           images: capturedEvidences
         }
       }, 60000);
@@ -4444,382 +4297,6 @@ function openFinishModal(order, targetStatus) {
     }
   });
 }
-
-window.editOrderFinishDate = function(orderId) {
-  if (!isLead()) {
-    showToast("⚠️ Solo gerencia puede editar fechas de cierre.");
-    return;
-  }
-
-  const order = [...(state.data.allOrders || []), ...(state.data.finishedOrders || [])].find(o => String(o.id).trim() === orderId.trim());
-  if (!order) {
-    showToast("⚠️ Pedido no encontrado.");
-    return;
-  }
-
-  const currentFinishDate = order.finProduccion ? new Date(order.finProduccion).toISOString().split('T')[0] : '';
-
-  openModal(`
-    <div class="modal-head">
-      <h2>✏️ Editar Fecha de Cierre</h2>
-      <button class="close-button" data-action="close">×</button>
-    </div>
-    <form id="edit-finish-date-form" style="margin-top:12px;">
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Pedido:</label>
-        <div style="font-size:14px; color:var(--text-main);">${escapeHtml(order.id)} - ${escapeHtml(order.cliente)}</div>
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Fecha actual de cierre:</label>
-        <div style="font-size:14px; color:${currentFinishDate ? '#10b981' : '#f59e0b'};">
-          ${currentFinishDate ? escapeHtml(formatDate(order.finProduccion)) : '⚠️ Sin fecha registrada'}
-        </div>
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Nueva fecha de cierre:</label>
-        <input type="date" id="new-finish-date" value="${currentFinishDate}" required style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px;">
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Hora de cierre (opcional):</label>
-        <input type="time" id="new-finish-time" value="${order.finProduccion ? new Date(order.finProduccion).toTimeString().split(' ')[0].substring(0,5) : ''}" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px;">
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Motivo del cambio:</label>
-        <input type="text" id="finish-date-reason" placeholder="Ej: Corrección de fecha, Pedido terminado el día X" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px;">
-      </div>
-      <div style="display:flex; gap:8px; margin-top:16px;">
-        <button type="button" class="secondary-button" data-action="close" style="flex:1;">Cancelar</button>
-        <button type="submit" class="primary-button" style="flex:2;">Guardar Cambios</button>
-      </div>
-    </form>
-  `);
-
-  const form = document.getElementById("edit-finish-date-form");
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const newDate = document.getElementById("new-finish-date").value;
-      const newTime = document.getElementById("new-finish-time").value;
-      const reason = document.getElementById("finish-date-reason").value.trim();
-
-      if (!newDate) {
-        alert("Por favor selecciona una fecha.");
-        return;
-      }
-
-      let finishDateTime;
-      if (newTime) {
-        finishDateTime = new Date(`${newDate}T${newTime}:00`);
-      } else {
-        finishDateTime = new Date(newDate);
-        finishDateTime.setHours(23, 59, 59); // Fin del día si no se especifica hora
-      }
-
-      try {
-        await api("profile_update_order", {
-          id: order.id,
-          user: state.session?.name || "Gerencia",
-          role: state.session?.role || "manager",
-          changes: {
-            finProduccion: finishDateTime.toISOString(),
-            comentarioCierre: reason ? `${order.comentarioCierre || ''}\n\n[CORRECCIÓN DE FECHA: ${reason}]` : order.comentarioCierre
-          }
-        }, 30000);
-
-        closeModal();
-        await refresh(false);
-        showToast("✅ Fecha de cierre actualizada exitosamente.");
-      } catch (err) {
-        alert("Error al actualizar fecha: " + err.message);
-      }
-    });
-  }
-};
-
-// Almacenamiento de sugerencias
-const getStoredSuggestions = () => {
-  try {
-    // Priorizar datos del backend sincronizados
-    const backendSuggestions = state.data?.suggestions || [];
-    if (backendSuggestions.length > 0) {
-      return backendSuggestions;
-    }
-    
-    // Fallback a localStorage
-    const stored = localStorage.getItem("pp_suggestions");
-    return stored ? JSON.parse(stored) : [];
-  } catch(e) {
-    return [];
-  }
-};
-
-const saveStoredSuggestions = (list) => {
-  try {
-    localStorage.setItem("pp_suggestions", JSON.stringify(list));
-  } catch(e) {}
-};
-
-window.openSuggestionsModal = function() {
-  const suggestions = getStoredSuggestions();
-  const isManager = isLead();
-
-  openModal(`
-    <div class="modal-head">
-      <h2>💡 Sugerencias &amp; Problemas</h2>
-      <button class="close-button" data-action="close">×</button>
-    </div>
-
-    ${isManager ? `
-      <div style="margin-bottom:16px;">
-        <div style="display:flex; gap:8px; margin-bottom:12px;">
-          <button type="button" class="secondary-button" onclick="window.filterSuggestions('all')" style="flex:1;">Todos</button>
-          <button type="button" class="secondary-button" onclick="window.filterSuggestions('pendiente')" style="flex:1;">Pendientes</button>
-          <button type="button" class="secondary-button" onclick="window.filterSuggestions('resuelto')" style="flex:1;">Resueltos</button>
-        </div>
-      </div>
-    ` : ''}
-
-    <div id="suggestions-list" style="max-height:400px; overflow-y:auto; margin-bottom:16px;">
-      ${suggestions.length === 0 ? '<p style="text-align:center; color:var(--text-muted);">No hay sugerencias ni problemas reportados.</p>' : 
-        suggestions.slice(0, isManager ? 50 : 10).map(s => `
-          <div style="background:${s.tipo === 'problema' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'}; border:1px solid ${s.tipo === 'problema' ? '#ef4444' : '#10b981'}; border-radius:8px; padding:12px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-              <span style="font-size:11px; font-weight:bold; color:${s.tipo === 'problema' ? '#ef4444' : '#10b981'}; text-transform:uppercase;">
-                ${s.tipo === 'problema' ? '🐛 PROBLEMA' : '💡 SUGERENCIA'}
-              </span>
-              <span style="font-size:10px; color:var(--text-muted);">${escapeHtml(s.fecha)}</span>
-            </div>
-            <div style="font-size:13px; margin-bottom:6px;">${escapeHtml(s.descripcion)}</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">
-              <strong>Reportado por:</strong> ${escapeHtml(s.autor)} ${s.rol ? `(${escapeHtml(s.rol)})` : ''}
-            </div>
-            ${s.captura ? `
-              <div style="margin-bottom:6px;">
-                <a href="${s.captura}" target="_blank" style="font-size:11px; color:#38bdf8; text-decoration:none;">
-                  📸 Ver captura de pantalla
-                </a>
-              </div>
-            ` : ''}
-            ${isManager ? `
-              <div style="display:flex; gap:8px; margin-top:8px;">
-                ${s.estado === 'pendiente' ? `
-                  <button type="button" onclick="window.resolveSuggestion('${escapeHtml(s.id)}')" style="background:#10b981; color:white; border:none; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer;">
-                    ✅ Marcar como resuelto
-                  </button>
-                ` : `
-                  <span style="font-size:11px; color:#10b981; font-weight:bold;">✅ Resuelto</span>
-                `}
-                <button type="button" onclick="window.deleteSuggestion('${escapeHtml(s.id)}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer;">
-                  🗑️ Eliminar
-                </button>
-              </div>
-            ` : ''}
-          </div>
-        `).join('')}
-    </div>
-
-    ${!isManager ? `
-      <button type="button" class="primary-button" onclick="window.openNewSuggestionModal()" style="width:100%; background:#f59e0b; border:none;">
-        + Nueva Sugerencia/Problema
-      </button>
-    ` : ''}
-  `);
-
-  window.filterSuggestions = function(filter) {
-    const suggestions = getStoredSuggestions();
-    const filtered = filter === 'all' ? suggestions : suggestions.filter(s => s.estado === filter);
-    
-    const listEl = document.getElementById("suggestions-list");
-    if (listEl) {
-      listEl.innerHTML = filtered.length === 0 ? '<p style="text-align:center; color:var(--text-muted);">No hay sugerencias con este filtro.</p>' : 
-        filtered.map(s => `
-          <div style="background:${s.tipo === 'problema' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'}; border:1px solid ${s.tipo === 'problema' ? '#ef4444' : '#10b981'}; border-radius:8px; padding:12px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-              <span style="font-size:11px; font-weight:bold; color:${s.tipo === 'problema' ? '#ef4444' : '#10b981'}; text-transform:uppercase;">
-                ${s.tipo === 'problema' ? '🐛 PROBLEMA' : '💡 SUGERENCIA'}
-              </span>
-              <span style="font-size:10px; color:var(--text-muted);">${escapeHtml(s.fecha)}</span>
-            </div>
-            <div style="font-size:13px; margin-bottom:6px;">${escapeHtml(s.descripcion)}</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">
-              <strong>Reportado por:</strong> ${escapeHtml(s.autor)} ${s.rol ? `(${escapeHtml(s.rol)})` : ''}
-            </div>
-            ${s.captura ? `
-              <div style="margin-bottom:6px;">
-                <a href="${s.captura}" target="_blank" style="font-size:11px; color:#38bdf8; text-decoration:none;">
-                  📸 Ver captura de pantalla
-                </a>
-              </div>
-            ` : ''}
-            <div style="display:flex; gap:8px; margin-top:8px;">
-              ${s.estado === 'pendiente' ? `
-                <button type="button" onclick="window.resolveSuggestion('${escapeHtml(s.id)}')" style="background:#10b981; color:white; border:none; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer;">
-                  ✅ Marcar como resuelto
-                </button>
-              ` : `
-                <span style="font-size:11px; color:#10b981; font-weight:bold;">✅ Resuelto</span>
-              `}
-              <button type="button" onclick="window.deleteSuggestion('${escapeHtml(s.id)}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer;">
-                🗑️ Eliminar
-              </button>
-            </div>
-          </div>
-        `).join('');
-    }
-  };
-
-  window.resolveSuggestion = function(id) {
-    const suggestions = getStoredSuggestions();
-    const idx = suggestions.findIndex(s => s.id === id);
-    if (idx !== -1) {
-      suggestions[idx].estado = 'resuelto';
-      suggestions[idx].fechaResolucion = new Date().toISOString();
-      saveStoredSuggestions(suggestions);
-      window.filterSuggestions('all');
-      showToast("✅ Sugerencia marcada como resuelta.");
-      
-      // Sincronizar con backend
-      try {
-        api("profile_update_suggestion", { id: id, estado: 'resuelto' }).catch(()=>{});
-      } catch(e){}
-    }
-  };
-
-  window.deleteSuggestion = function(id) {
-    if (!confirm("¿Estás seguro de eliminar esta sugerencia?")) return;
-    
-    const suggestions = getStoredSuggestions();
-    const filtered = suggestions.filter(s => s.id !== id);
-    saveStoredSuggestions(filtered);
-    window.filterSuggestions('all');
-    showToast("🗑️ Sugerencia eliminada.");
-  };
-};
-
-window.openNewSuggestionModal = function() {
-  let capturaBase64 = "";
-
-  openModal(`
-    <div class="modal-head">
-      <h2>✨ Nueva Sugerencia/Problema</h2>
-      <button class="close-button" data-action="close">×</button>
-    </div>
-
-    <form id="suggestion-form" style="margin-top:12px;">
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Tipo:</label>
-        <select id="suggestion-type" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px;">
-          <option value="sugerencia">💡 Sugerencia (idea de mejora)</option>
-          <option value="problema">🐛 Problema (error o bug)</option>
-        </select>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">Descripción:</label>
-        <textarea id="suggestion-desc" rows="4" placeholder="Describe detalladamente tu sugerencia o problema..." required style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:6px; resize:vertical;"></textarea>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block; margin-bottom:4px; font-weight:bold;">📸 Captura de pantalla (opcional):</label>
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="secondary-button" id="btn-cam-suggestion" style="background:#f59e0b; color:white; border:none; padding:6px 12px; font-size:11px; border-radius:6px; cursor:pointer;">
-            📸 Tomar Foto
-          </button>
-          <label class="secondary-button" style="background:var(--bg-main); border:1px solid var(--border-color); padding:6px 12px; font-size:11px; border-radius:6px; cursor:pointer;">
-            📁 Subir Foto
-            <input type="file" id="suggestion-file-input" accept="image/*" style="display:none;">
-          </label>
-        </div>
-        <div id="suggestion-photo-preview" style="display:none; margin-top:8px;">
-          <img id="suggestion-thumb-img" src="" style="width:100px; height:100px; object-fit:cover; border-radius:6px; border:1px solid #f59e0b;">
-        </div>
-      </div>
-
-      <div style="display:flex; gap:8px; margin-top:16px;">
-        <button type="button" class="secondary-button" data-action="close" style="flex:1;">Cancelar</button>
-        <button type="submit" class="primary-button" style="flex:2; background:#f59e0b; border:none;">Enviar</button>
-      </div>
-    </form>
-  `);
-
-  const fileInp = document.getElementById("suggestion-file-input");
-  const camBtn = document.getElementById("btn-cam-suggestion");
-  const pBox = document.getElementById("suggestion-photo-preview");
-  const pImg = document.getElementById("suggestion-thumb-img");
-
-  if (fileInp) {
-    fileInp.addEventListener("change", (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      const r = new FileReader();
-      r.onload = (ev) => {
-        capturaBase64 = ev.target.result;
-        pImg.src = capturaBase64;
-        pBox.style.display = "block";
-      };
-      r.readAsDataURL(f);
-    });
-  }
-
-  if (camBtn) {
-    camBtn.addEventListener("click", () => {
-      const inp = document.createElement("input");
-      inp.type = "file";
-      inp.accept = "image/*";
-      inp.capture = "environment";
-      inp.onchange = (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        const r = new FileReader();
-        r.onload = (ev) => {
-          capturaBase64 = ev.target.result;
-          pImg.src = capturaBase64;
-          pBox.style.display = "block";
-        };
-        r.readAsDataURL(f);
-      };
-      inp.click();
-    });
-  }
-
-  const form = document.getElementById("suggestion-form");
-  if (form) {
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const tipo = document.getElementById("suggestion-type").value;
-      const descripcion = document.getElementById("suggestion-desc").value.trim();
-
-      if (!descripcion) {
-        alert("Por favor describe tu sugerencia o problema.");
-        return;
-      }
-
-      const newSuggestion = {
-        id: "SUG-" + Date.now(),
-        tipo: tipo,
-        descripcion: descripcion,
-        captura: capturaBase64,
-        autor: state.session?.name || "Usuario",
-        rol: state.session?.role || "trabajador",
-        fecha: new Date().toISOString(),
-        estado: 'pendiente'
-      };
-
-      const suggestions = getStoredSuggestions();
-      suggestions.unshift(newSuggestion);
-      saveStoredSuggestions(suggestions);
-
-      // Sincronizar con backend
-      try {
-        api("profile_save_suggestion", newSuggestion).catch(()=>{});
-      } catch(e){}
-
-      closeModal();
-      window.openSuggestionsModal();
-      showToast("✅ Sugerencia/problema enviado exitosamente.");
-    });
-  }
-};
 
 function openEditDeliveryDateModal(orderOrId) {
   let order = orderOrId;
@@ -7455,7 +6932,6 @@ window.openExpressOrderModal = function() {
   const DRAFT_KEY = "jj_express_order_draft_active";
   
   if (expressFormEl) {
-    // Restaurar borrador si el celular pausó la pestaña al usar la cámara
     try {
       const savedDraft = sessionStorage.getItem(DRAFT_KEY);
       if (savedDraft) {
@@ -7470,7 +6946,6 @@ window.openExpressOrderModal = function() {
       }
     } catch(err) {}
 
-    // Guardar en cada pulsación para proteger el formulario en teléfonos móviles
     expressFormEl.addEventListener("input", () => {
       try {
         const draft = {
@@ -7620,7 +7095,6 @@ window.openExpressOrderModal = function() {
         const res = await api("profile_create_order", payload);
         if (res && (res.ok || res.exito)) {
           showToast(`✅ Pedido ${res.id || ''} registrado con éxito en Mostrador.`);
-          sessionStorage.removeItem("jj_express_order_draft");
           closeModal();
           await refresh(true);
         } else {
@@ -8612,101 +8086,6 @@ window.addStandardSubItem = function(tipo, cant, det) {
 // =========================================================================
 // MÓDULO 1: PROVEEDORES Y CUENTAS POR PAGAR (EXCLUSIVO GERENCIA / JEFES)
 // =========================================================================
-
-// Helper de tipificación y cálculo de estado de vencimiento de notas de proveedor
-function getProviderInvoiceStatus(inv, now = new Date()) {
-  const saldo = Number(inv.saldoPendiente || 0);
-  const total = Number(inv.montoTotal || 0);
-  const abonado = Number(inv.abonado || 0);
-  const isPaid = saldo <= 0.01;
-  const isParcial = abonado > 0 && !isPaid;
-
-  const vDate = safeParseDate(inv.fechaVencimiento);
-  const nowYear = now.getFullYear();
-  const nowMonth = now.getMonth();
-  const nowDay = now.getDate();
-  const todayStart = new Date(nowYear, nowMonth, nowDay, 0, 0, 0).getTime();
-  const todayEnd = new Date(nowYear, nowMonth, nowDay, 23, 59, 59, 999).getTime();
-
-  let isOverdue = false;
-  let isDueToday = false;
-  let isUpcoming = false;
-  let diasVencido = 0;
-  let diasParaVencer = 0;
-
-  if (vDate && !isPaid) {
-    const vTime = vDate.getTime();
-    if (vTime < todayStart) {
-      isOverdue = true;
-      diasVencido = Math.max(1, Math.ceil((todayStart - vTime) / 86400000));
-    } else if (vTime <= todayEnd) {
-      isDueToday = true;
-    } else {
-      diasParaVencer = Math.max(1, Math.ceil((vTime - todayEnd) / 86400000));
-      if (diasParaVencer <= 5) isUpcoming = true;
-    }
-  }
-
-  // Deducción limpia de fecha de registro
-  let fRegistro = inv.fechaRegistro;
-  if (!fRegistro) {
-    if (inv.id && String(inv.id).startsWith("PROV-")) {
-      const ts = Number(String(inv.id).replace("PROV-", ""));
-      if (!isNaN(ts) && ts > 1600000000000) {
-        fRegistro = new Date(ts).toISOString().split("T")[0];
-      }
-    }
-    if (!fRegistro) fRegistro = inv.fechaEntrega || new Date().toISOString().split("T")[0];
-  }
-
-  const fVenceClean = formatSimpleDate(inv.fechaVencimiento) || "Inmediato";
-  const fEntregaClean = formatSimpleDate(inv.fechaEntrega);
-  const fRegistroClean = formatSimpleDate(fRegistro);
-
-  // Formato de moneda
-  const isVES = String(inv.moneda || "").toUpperCase() === "VES" || String(inv.moneda || "").toUpperCase() === "BS";
-  const currencySymbol = isVES ? "Bs." : "$";
-
-  let badgeClass = "prov-badge-pending";
-  let badgeText = "⏳ Pendiente";
-  if (isPaid) {
-    badgeClass = "prov-badge-paid";
-    badgeText = "✅ Pagada";
-  } else if (isOverdue) {
-    badgeClass = "prov-badge-overdue";
-    badgeText = `⚠️ VENCIDA (${diasVencido} d)`;
-  } else if (isDueToday) {
-    badgeClass = "prov-badge-today";
-    badgeText = "⏰ Vence Hoy";
-  } else if (isUpcoming) {
-    badgeClass = "prov-badge-upcoming";
-    badgeText = `⏳ Vence en ${diasParaVencer} d`;
-  } else if (isParcial) {
-    badgeClass = "prov-badge-partial";
-    badgeText = "🟡 Abono Parcial";
-  }
-
-  return {
-    saldo,
-    total,
-    abonado,
-    isPaid,
-    isParcial,
-    isOverdue,
-    isDueToday,
-    isUpcoming,
-    diasVencido,
-    diasParaVencer,
-    fVenceClean,
-    fEntregaClean,
-    fRegistroClean,
-    isVES,
-    currencySymbol,
-    badgeClass,
-    badgeText,
-    vDate
-  };
-}
 function getStoredProvidersData() {
   if (state.data?.providerInvoices && Array.isArray(state.data.providerInvoices) && state.data.providerInvoices.length > 0) {
     return state.data.providerInvoices;
@@ -8744,261 +8123,6 @@ function getProviderList() {
   ]);
 }
 
-window.downloadProvidersReport = function() {
-  const invoices = getStoredProvidersData();
-  const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
-  
-  if (invoices.length === 0) {
-    alert("No hay notas de entrega para generar reporte.");
-    return;
-  }
-
-  const now = new Date();
-  const dateEmissionStr = now.toLocaleDateString('es-VE') + ' ' + now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-  // Procesar y tipificar cada nota
-  const processed = invoices.map(inv => {
-    const st = getProviderInvoiceStatus(inv, now);
-    return { inv, st };
-  });
-
-  // Ordenar con prioridad: Primero VENCIDAS (de mayor a menor días de mora), luego Por Vencer, luego Pendientes, luego Pagadas
-  processed.sort((a, b) => {
-    if (a.st.isOverdue && !b.st.isOverdue) return -1;
-    if (!a.st.isOverdue && b.st.isOverdue) return 1;
-    if (a.st.isOverdue && b.st.isOverdue) return b.st.diasVencido - a.st.diasVencido;
-    if (a.st.isUpcoming && !b.st.isUpcoming) return -1;
-    if (!a.st.isUpcoming && b.st.isUpcoming) return 1;
-    if (!a.st.isPaid && b.st.isPaid) return -1;
-    if (a.st.isPaid && !b.st.isPaid) return 1;
-    return 0;
-  });
-
-  // Totales segregados
-  let totalUSD = 0;
-  let totalVES = 0;
-  let totalAbonadoUSD = 0;
-  let totalAbonadoVES = 0;
-  let vencidasCount = 0;
-  let pendientesCount = 0;
-
-  processed.forEach(({ inv, st }) => {
-    if (st.isVES) {
-      totalVES += st.saldo;
-      totalAbonadoVES += st.abonado;
-    } else {
-      totalUSD += st.saldo;
-      totalAbonadoUSD += st.abonado;
-    }
-    if (st.isOverdue) vencidasCount++;
-    if (!st.isPaid) pendientesCount++;
-  });
-
-  // Generar HTML optimizado para imprimir (Letter / Horizontal / Vertical con alto contraste)
-  const printHTML = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>Reporte de Notas de Entrega y Cuentas por Pagar - Creaciones JJ</title>
-      <style>
-        @page { size: landscape; margin: 12mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', -apple-system, Arial, sans-serif; padding: 15px; color: #111827; background: #fff; font-size: 11px; }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #10b981; padding-bottom: 10px; margin-bottom: 12px; }
-        .header-title h1 { margin: 0 0 4px 0; font-size: 18px; color: #065f46; letter-spacing: 0.5px; }
-        .header-title h2 { margin: 0 0 4px 0; font-size: 13px; color: #047857; font-weight: 600; }
-        .header-title p { margin: 0; font-size: 10.5px; color: #6b7280; }
-        .header-meta { text-align: right; font-size: 10.5px; color: #374151; }
-        
-        .kpi-container { display: flex; gap: 12px; margin-bottom: 14px; }
-        .kpi-box { flex: 1; border: 1.5px solid #e5e7eb; border-radius: 6px; padding: 8px 12px; background: #f9fafb; }
-        .kpi-box.danger { border-color: #ef4444; background: #fef2f2; }
-        .kpi-box.success { border-color: #10b981; background: #f0fdf4; }
-        .kpi-label { font-size: 9.5px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
-        .kpi-value { font-size: 18px; font-weight: 900; margin: 2px 0; }
-        .kpi-sub { font-size: 9.5px; color: #6b7280; }
-
-        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-        th, td { border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; vertical-align: middle; }
-        th { background: #f3f4f6; color: #111827; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
-        
-        tr.row-vencida { background: #fff1f2; }
-        tr.row-proxima { background: #fffbeb; }
-        tr.row-pagada { background: #f0fdf4; color: #6b7280; }
-        
-        .tag-vencida { background: #ef4444; color: #fff; font-weight: 800; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
-        .tag-proxima { background: #f59e0b; color: #fff; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
-        .tag-abono { background: #0284c7; color: #fff; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
-        .tag-pendiente { background: #e5e7eb; color: #374151; font-weight: 600; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
-        .tag-pagada { background: #10b981; color: #fff; font-weight: 700; font-size: 9.5px; padding: 2px 6px; border-radius: 4px; display: inline-block; }
-
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
-        .total-row { font-weight: 900; background: #e5e7eb; font-size: 11.5px; }
-        
-        .signatures { display: flex; justify-content: space-between; margin-top: 35px; page-break-inside: avoid; }
-        .sign-box { width: 28%; border-top: 1px solid #9ca3af; text-align: center; padding-top: 6px; font-size: 10px; color: #4b5563; }
-        .notice { font-size: 9.5px; color: #6b7280; margin-top: 15px; border-left: 3px solid #10b981; padding-left: 8px; }
-
-        @media print {
-          body { padding: 0; }
-          .no-print { display: none; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="header-title">
-          <h1>CREACIONES JJ · TALLER OCHOA &amp; RISQUEZ</h1>
-          <h2>CONTROL FÍSICO DE NOTAS DE ENTREGA Y CUENTAS POR PAGAR</h2>
-          <p>Consolidado general para archivo en carpeta física de compras y proveedores.</p>
-        </div>
-        <div class="header-meta">
-          <div><strong>Fecha Emisión:</strong> ${dateEmissionStr}</div>
-          <div><strong>Total Registros:</strong> ${invoices.length} nota(s)</div>
-          <div><strong>Tasa Referencial BCV:</strong> Bs. ${currentTasa.toFixed(2)}</div>
-        </div>
-      </div>
-
-      <div class="kpi-container">
-        <div class="kpi-box success">
-          <div class="kpi-label">Deuda Pendiente en Dólares ($)</div>
-          <div class="kpi-value" style="color:#059669;">$${totalUSD.toFixed(2)} USD</div>
-          <div class="kpi-sub">Total acumulado a liquidar en divisas</div>
-        </div>
-        ${totalVES > 0 ? `
-          <div class="kpi-box">
-            <div class="kpi-label">Deuda Fija en Bolívares (Bs.)</div>
-            <div class="kpi-value" style="color:#0284c7;">Bs. ${totalVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            <div class="kpi-sub">Notas fijadas netamente en bolívares</div>
-          </div>
-        ` : ''}
-        <div class="kpi-box ${vencidasCount > 0 ? 'danger' : ''}">
-          <div class="kpi-label">Notas Vencidas (Acción Inmediata)</div>
-          <div class="kpi-value" style="color:${vencidasCount > 0 ? '#dc2626' : '#111827'};">${vencidasCount}</div>
-          <div class="kpi-sub">${vencidasCount > 0 ? '⚠️ Prioridad máxima de pago' : 'Cero deudas vencidas'}</div>
-        </div>
-        <div class="kpi-box">
-          <div class="kpi-label">Total Notas Pendientes</div>
-          <div class="kpi-value" style="color:#2563eb;">${pendientesCount} / ${invoices.length}</div>
-          <div class="kpi-sub">Notas activas por liquidar</div>
-        </div>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th style="width:20%;">Proveedor</th>
-            <th style="width:11%;">N° Nota / Fac</th>
-            <th style="width:9%;">Recepción Local</th>
-            <th style="width:9%;">Registro</th>
-            <th style="width:9%;">Vencimiento</th>
-            <th style="width:7%;" class="text-center">Moneda</th>
-            <th style="width:9%;" class="text-right">Monto Total</th>
-            <th style="width:8%;" class="text-right">Abonado</th>
-            <th style="width:9%;" class="text-right">Saldo Pendiente</th>
-            <th style="width:9%;" class="text-center">Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${processed.map(({ inv, st }) => {
-            let rowClass = '';
-            let tagHTML = '';
-            if (st.isPaid) {
-              rowClass = 'row-pagada';
-              tagHTML = '<span class="tag-pagada">PAGADA</span>';
-            } else if (st.isOverdue) {
-              rowClass = 'row-vencida';
-              tagHTML = `<span class="tag-vencida">VENCIDA (${st.diasVencido} d)</span>`;
-            } else if (st.isDueToday) {
-              rowClass = 'row-proxima';
-              tagHTML = '<span class="tag-proxima">VENCE HOY</span>';
-            } else if (st.isUpcoming) {
-              rowClass = 'row-proxima';
-              tagHTML = `<span class="tag-proxima">EN ${st.diasParaVencer} DÍAS</span>`;
-            } else if (st.isParcial) {
-              tagHTML = '<span class="tag-abono">ABONO PARCIAL</span>';
-            } else {
-              tagHTML = '<span class="tag-pendiente">PENDIENTE</span>';
-            }
-
-            const sym = st.currencySymbol;
-            return `
-              <tr class="${rowClass}">
-                <td>
-                  <strong>${escapeHtml(inv.proveedor || 'Sin Proveedor')}</strong>
-                  ${inv.notas ? `<div style="font-size:9.5px; color:#4b5563; margin-top:2px;">${escapeHtml(inv.notas)}</div>` : ''}
-                </td>
-                <td style="font-family:monospace; font-weight:bold; color:#0369a1;">${escapeHtml(inv.numeroNota || 'S/N')}</td>
-                <td>${escapeHtml(st.fEntregaClean)}</td>
-                <td>${escapeHtml(st.fRegistroClean)}</td>
-                <td style="font-weight:${st.isOverdue ? 'bold' : 'normal'}; color:${st.isOverdue ? '#dc2626' : 'inherit'};">
-                  ${escapeHtml(st.fVenceClean)}
-                </td>
-                <td class="text-center"><strong>${st.isVES ? 'Bs VES' : '$ USD'}</strong></td>
-                <td class="text-right">${sym} ${Number(st.total).toFixed(2)}</td>
-                <td class="text-right" style="color:#059669;">${sym} ${Number(st.abonado).toFixed(2)}</td>
-                <td class="text-right" style="font-weight:bold; color:${st.saldo > 0 ? (st.isOverdue ? '#dc2626' : '#d97706') : '#059669'};">
-                  ${sym} ${Number(st.saldo).toFixed(2)}
-                </td>
-                <td class="text-center">${tagHTML}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-        <tfoot>
-          <tr class="total-row">
-            <td colspan="6" class="text-right">TOTAL PENDIENTE EN DÓLARES ($ USD):</td>
-            <td colspan="4" class="text-right" style="color:#059669; font-size:12px;">$${totalUSD.toFixed(2)} USD</td>
-          </tr>
-          ${totalVES > 0 ? `
-            <tr class="total-row">
-              <td colspan="6" class="text-right">TOTAL PENDIENTE EN BOLÍVARES (Bs. VES):</td>
-              <td colspan="4" class="text-right" style="color:#0284c7; font-size:12px;">Bs. ${totalVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            </tr>
-          ` : ''}
-        </tfoot>
-      </table>
-
-      <div class="notice">
-        <strong>Nota de Administración:</strong> Los montos fijados en dólares se pagan y liquidan exclusivamente en divisas americanas o su equivalente a tasa acordada al momento del pago. Las notas marcadas como <em>VENCIDAS</em> tienen prioridad absoluta de desembolso para mantener las líneas de crédito abiertas con los proveedores del taller.
-      </div>
-
-      <div class="signatures">
-        <div class="sign-box">
-          <strong>Elaborado por</strong><br>
-          Administración Creaciones JJ
-        </div>
-        <div class="sign-box">
-          <strong>Revisado por</strong><br>
-          Gerencia / Sr. Ochoa / Sra. Rísquez
-        </div>
-        <div class="sign-box">
-          <strong>Recibido para Pago</strong><br>
-          Firma y Fecha de Liquidación
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert("Por favor permite las ventanas emergentes (pop-ups) en tu navegador para imprimir el reporte.");
-    return;
-  }
-  printWindow.document.write(printHTML);
-  printWindow.document.close();
-  
-  setTimeout(() => {
-    printWindow.focus();
-    printWindow.print();
-  }, 500);
-  
-  showToast("📄 Reporte físico generado. Se abrió el diálogo de impresión.");
-};
-
 function saveProviderList(list) {
   store.set("pp_provider_list", list);
 }
@@ -9011,35 +8135,32 @@ function providersView() {
   const invoices = getStoredProvidersData();
   const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
 
-  // KPIs con tipificación precisa
+  // KPIs
   let totalDeudaUSD = 0;
-  let totalDeudaVES = 0;
   let totalAbonadoUSD = 0;
-  let totalAbonadoVES = 0;
   let vencidasCount = 0;
   let proximasCount = 0;
   const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
 
   invoices.forEach(inv => {
-    const st = getProviderInvoiceStatus(inv, now);
-    if (st.isVES) {
-      totalDeudaVES += st.saldo;
-      totalAbonadoVES += st.abonado;
-    } else {
-      totalDeudaUSD += st.saldo;
-      totalAbonadoUSD += st.abonado;
-    }
+    const saldo = Number(inv.saldoPendiente || 0);
+    const monto = Number(inv.montoTotal || 0);
+    const abon = Number(inv.abonado || 0);
+    totalDeudaUSD += saldo;
+    totalAbonadoUSD += abon;
 
-    if (!st.isPaid) {
-      if (st.isOverdue) {
+    if (saldo > 0.01) {
+      if (inv.fechaVencimiento && inv.fechaVencimiento < todayStr) {
         vencidasCount++;
-      } else if (st.isDueToday || st.isUpcoming) {
-        proximasCount++;
+      } else if (inv.fechaVencimiento) {
+        const diffDays = Math.ceil((new Date(inv.fechaVencimiento) - now) / 86400000);
+        if (diffDays >= 0 && diffDays <= 5) proximasCount++;
       }
     }
   });
 
-  const totalDeudaBsEquiv = (totalDeudaUSD * currentTasa) + totalDeudaVES;
+  const totalDeudaBs = totalDeudaUSD * currentTasa;
 
   return `
     <div style="max-width:1150px; margin:0 auto; padding-bottom:40px;">
@@ -9050,7 +8171,7 @@ function providersView() {
             <i class="fas fa-truck-loading" style="color:#10b981;"></i> Proveedores &amp; Cuentas por Pagar
           </h1>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0;">
-            Control integral de notas de entrega físicas, compras de insumos, vencimientos y pagos a proveedores.
+            Control integral de notas de entrega, pagos fraccionados, tasa oficial BCV y alertas de vencimiento para los jefes.
           </p>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
@@ -9062,12 +8183,6 @@ function providersView() {
           <button type="button" class="primary-button" onclick="window.openNewProviderInvoiceModal()" style="background:#10b981; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
             <i class="fas fa-file-invoice-dollar"></i> + Nueva Nota de Entrega
           </button>
-          <button type="button" class="secondary-button" onclick="window.downloadProvidersReport()" style="background:#f59e0b; color:white; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-            <i class="fas fa-print"></i> Imprimir Reporte Físico
-          </button>
-          <button type="button" class="secondary-button" onclick="window.exportOverdueToCalendar()" style="background:#0ea5e9; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-            <i class="fas fa-calendar-plus"></i> Exportar a Calendario
-          </button>
         </div>
       </div>
 
@@ -9075,20 +8190,14 @@ function providersView() {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:20px;">
         <div class="sics-metric-card" style="border-color:#10b981;">
           <div style="font-size:11px; font-weight:700; color:#10b981; text-transform:uppercase;">DEUDA TOTAL PENDIENTE</div>
-          <div style="font-size:24px; font-weight:900; color:var(--text-main); margin:4px 0;">
-            $${totalDeudaUSD.toFixed(2)} ${totalDeudaVES > 0 ? `<span style="font-size:13px; color:#38bdf8;">+ Bs. ${totalDeudaVES.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>` : ''}
-          </div>
-          <div style="font-size:11.5px; color:#38bdf8; font-weight:bold;">Bs. ${totalDeudaBsEquiv.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Equiv. BCV)</div>
+          <div style="font-size:24px; font-weight:900; color:var(--text-main); margin:4px 0;">$${totalDeudaUSD.toFixed(2)}</div>
+          <div style="font-size:11.5px; color:#38bdf8; font-weight:bold;">Bs. ${totalDeudaBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
 
-        <div class="sics-metric-card" style="border-color:${vencidasCount ? '#ef4444' : 'var(--border-color)'}; background:${vencidasCount ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-card)'};">
-          <div style="font-size:11px; font-weight:800; color:#ef4444; text-transform:uppercase; display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-exclamation-triangle"></i> NOTAS VENCIDAS
-          </div>
-          <div style="font-size:26px; font-weight:900; color:${vencidasCount ? '#ef4444' : 'var(--text-main)'}; margin:4px 0;">${vencidasCount}</div>
-          <div style="font-size:11.5px; font-weight:${vencidasCount ? 'bold' : 'normal'}; color:${vencidasCount ? '#ef4444' : 'var(--text-muted)'};">
-            ${vencidasCount > 0 ? '🚨 ¡Prioridad máxima para pagar!' : 'Cero deudas vencidas'}
-          </div>
+        <div class="sics-metric-card" style="border-color:${vencidasCount ? '#ef4444' : 'var(--border-color)'};">
+          <div style="font-size:11px; font-weight:700; color:#ef4444; text-transform:uppercase;">NOTAS VENCIDAS</div>
+          <div style="font-size:24px; font-weight:900; color:${vencidasCount ? '#ef4444' : 'var(--text-main)'}; margin:4px 0;">${vencidasCount}</div>
+          <div style="font-size:11px; color:${vencidasCount ? '#ef4444' : 'var(--text-muted)'}; font-weight:bold;">${vencidasCount ? '⚠️ Requieren pago urgente' : 'Cero deudas vencidas'}</div>
         </div>
 
         <div class="sics-metric-card" style="border-color:${proximasCount ? '#f59e0b' : 'var(--border-color)'};">
@@ -9111,60 +8220,78 @@ function providersView() {
             <i class="fas fa-list-alt" style="color:#10b981;"></i> Registro de Notas de Entrega y Facturas
           </div>
           <div style="display:flex; gap:6px;">
-            <input type="text" placeholder="🔍 Filtrar proveedor o nota..." oninput="window.filterProviderTable(this.value)" style="padding:5px 10px; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; width:220px;">
+            <input type="text" placeholder="🔍 Filtrar proveedor o nota..." oninput="window.filterProviderTable(this.value)" style="padding:5px 10px; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; width:200px;">
           </div>
         </div>
 
         <div style="overflow-x:auto;">
-          <table class="sics-data-table" id="table-provider-invoices">
+          
+      <!-- PESTAÑAS DE FILTRO: ACTIVAS / TODAS / ARCHIVADAS (>60 días o Pagadas) -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="secondary-button" style="padding:5px 12px; font-size:12px; font-weight:700; ${!window._jjProvFilter || window._jjProvFilter === 'activas' ? 'background:#10b981; color:white; border:none;' : ''}" onclick="window._jjProvFilter='activas'; render();">
+            ⚡ Deudas Activas (${invoices.filter(i => Number(i.saldoPendiente || 0) > 0.01).length})
+          </button>
+          <button type="button" class="secondary-button" style="padding:5px 12px; font-size:12px; font-weight:700; ${window._jjProvFilter === 'todas' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window._jjProvFilter='todas'; render();">
+            🌐 Todas (${invoices.length})
+          </button>
+          <button type="button" class="secondary-button" style="padding:5px 12px; font-size:12px; font-weight:700; ${window._jjProvFilter === 'archivadas' ? 'background:#64748b; color:white; border:none;' : ''}" onclick="window._jjProvFilter='archivadas'; render();">
+            📦 Archivadas / Pagadas (${invoices.filter(i => Number(i.saldoPendiente || 0) <= 0.01).length})
+          </button>
+        </div>
+      </div>
+      <table class="sics-data-table" id="table-provider-invoices">
+
             <thead>
               <tr>
                 <th>Proveedor</th>
                 <th>N° Nota / Factura</th>
-                <th>Fecha Entrega (Local)</th>
-                <th>Fecha Registro</th>
-                <th>Fecha Vencimiento</th>
-                <th style="text-align:right;">Total</th>
-                <th style="text-align:right;">Abonado</th>
+                <th>Fecha Entrega</th>
+                <th>Vence</th>
+                <th style="text-align:right;">Total ($)</th>
+                <th style="text-align:right;">Abonado ($)</th>
                 <th style="text-align:right;">Saldo Deuda</th>
                 <th style="text-align:center;">Estado</th>
-                <th style="text-align:center;">Días Vencido</th>
                 <th style="text-align:center;">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              ${invoices.map(inv => {
-                const st = getProviderInvoiceStatus(inv, now);
-                const sym = st.currencySymbol;
-                const totalFmt = `${sym} ${Number(st.total).toFixed(2)}`;
-                const abonadoFmt = `${sym} ${Number(st.abonado).toFixed(2)}`;
-                const saldoFmt = `${sym} ${Number(st.saldo).toFixed(2)}`;
+              ${invoices.filter(inv => {
+                const isPaid = Number(inv.saldoPendiente || 0) <= 0.01;
+                const fEnt = inv.fechaEntrega ? new Date(inv.fechaEntrega) : null;
+                const isOld = fEnt && !isNaN(fEnt.getTime()) && ((new Date() - fEnt) / 86400000 > 60);
+                
+                const filter = window._jjProvFilter || 'activas';
+                if (filter === 'activas') return !isPaid && !isOld;
+                if (filter === 'archivadas') return isPaid || isOld;
+                return true;
+              }).map(inv => {
+                const isOverdue = inv.fechaVencimiento && inv.fechaVencimiento < todayStr && inv.saldoPendiente > 0.01;
+                const badgeClass = isOverdue ? 'prov-badge-overdue' : (inv.saldoPendiente <= 0.01 ? 'prov-badge-paid' : (inv.abonado > 0 ? 'prov-badge-partial' : 'prov-badge-pending'));
+                const badgeText = isOverdue ? '⚠️ Vencida' : (inv.saldoPendiente <= 0.01 ? '✅ Pagada' : (inv.abonado > 0 ? '🟡 Abono Parcial' : '⏳ Pendiente'));
+                const saldoBs = (inv.saldoPendiente * currentTasa).toLocaleString('es-VE', { maximumFractionDigits: 0 });
 
                 return `
-                  <tr data-prov-search="${escapeHtml((inv.proveedor + ' ' + (inv.numeroNota || '') + ' ' + (inv.notas || '')).toLowerCase())}" style="${st.isOverdue ? 'background:rgba(239, 68, 68, 0.05);' : ''}">
+                  <tr data-prov-search="${escapeHtml((inv.proveedor + ' ' + inv.numeroNota).toLowerCase())}">
                     <td style="font-weight:700; color:var(--text-main);">
                       <div style="display:flex; align-items:center; gap:6px;">
-                        <i class="fas fa-building" style="color:#9ca3af; font-size:11px;"></i> ${escapeHtml(inv.proveedor || 'Sin Proveedor')}
-                        ${st.isVES ? '<span style="background:rgba(14,165,233,0.15); color:#0ea5e9; font-size:9.5px; padding:1px 5px; border-radius:4px; font-weight:bold;">Bs VES</span>' : ''}
+                        <i class="fas fa-building" style="color:#9ca3af; font-size:11px;"></i> ${escapeHtml(inv.proveedor)}
                       </div>
-                      ${inv.notas ? `<div style="font-size:10.5px; color:var(--text-muted); font-weight:normal; margin-top:2px;">${escapeHtml(inv.notas)}</div>` : ''}
+                      ${inv.notas ? `<div style="font-size:10.5px; color:var(--text-muted); font-weight:normal;">${escapeHtml(inv.notas)}</div>` : ''}
                     </td>
                     <td style="font-family:monospace; font-weight:bold; color:#38bdf8;">${escapeHtml(inv.numeroNota || 'S/N')}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(st.fEntregaClean)}</td>
-                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(st.fRegistroClean)}</td>
-                    <td style="font-size:11.5px; font-weight:bold; color:${st.isOverdue ? '#ef4444' : (st.isDueToday ? '#10b981' : (st.isUpcoming ? '#f59e0b' : 'var(--text-main)'))};">
-                      ${escapeHtml(st.fVenceClean)}
+                    <td style="font-size:11.5px; color:var(--text-muted);">${escapeHtml(inv.fechaEntrega)}</td>
+                    <td style="font-size:11.5px; font-weight:bold; color:${isOverdue ? '#ef4444' : 'var(--text-main)'};">
+                      ${escapeHtml(inv.fechaVencimiento || 'Inmediato')}
                     </td>
-                    <td style="text-align:right; font-weight:bold;">${totalFmt}</td>
-                    <td style="text-align:right; color:#10b981; font-weight:bold;">${abonadoFmt}</td>
+                    <td style="text-align:right; font-weight:bold;">$${Number(inv.montoTotal).toFixed(2)}</td>
+                    <td style="text-align:right; color:#10b981; font-weight:bold;">$${Number(inv.abonado).toFixed(2)}</td>
                     <td style="text-align:right;">
-                      <strong style="color:${st.saldo > 0 ? (st.isOverdue ? '#ef4444' : '#f59e0b') : '#10b981'}; font-size:13px;">${saldoFmt}</strong>
+                      <strong style="color:${inv.saldoPendiente > 0 ? '#ef4444' : '#10b981'}; font-size:13px;">$${Number(inv.saldoPendiente).toFixed(2)}</strong>
+                      ${inv.saldoPendiente > 0 ? `<div style="font-size:10px; color:#38bdf8;">Bs. ${saldoBs}</div>` : ''}
                     </td>
                     <td style="text-align:center;">
-                      <span class="${st.badgeClass}">${st.badgeText}</span>
-                    </td>
-                    <td style="text-align:center; font-weight:bold; color:${st.isOverdue ? '#ef4444' : 'var(--text-muted)'};">
-                      ${st.isOverdue ? `<span style="background:rgba(239,68,68,0.15); color:#ef4444; padding:2px 6px; border-radius:6px; font-size:11px;">${st.diasVencido} d</span>` : '-'}
+                      <span class="${badgeClass}">${badgeText}</span>
                     </td>
                     <td style="text-align:center; white-space:nowrap;">
                       <button type="button" class="primary-button" onclick="window.openProviderInvoiceDetailModal('${escapeHtml(inv.id)}')" style="font-size:10.5px; padding:3px 8px; background:#0ea5e9; border:none; margin-right:4px;" title="Ver abonos y fotos">
@@ -9183,77 +8310,7 @@ function providersView() {
       </div>
     </div>
   `;
-
-  // Mostrar alerta si hay notas vencidas
-  if (vencidasCount > 0) {
-    setTimeout(() => {
-      Swal.fire({
-        icon: 'warning',
-        title: `⚠️ Tienes ${vencidasCount} nota(s) vencida(s)`,
-        text: 'Estas notas requieren pago urgente con máxima prioridad. Por favor revisa la lista de proveedores.',
-        confirmButtonColor: '#ef4444',
-        confirmButtonText: 'Revisar Ahora'
-      });
-    }, 500);
-  }
-
-  // Actualizar badge de notificación en el botón de proveedores
-  const tabBadgeProviders = document.getElementById('tabBadgeProviders');
-  if (tabBadgeProviders) {
-    if (vencidasCount > 0) {
-      tabBadgeProviders.textContent = vencidasCount;
-      tabBadgeProviders.style.display = 'inline-block';
-      tabBadgeProviders.style.background = '#ef4444';
-    } else {
-      tabBadgeProviders.style.display = 'none';
-    }
-  }
 }
-
-// Exportar notas vencidas a calendario (.ics)
-window.exportOverdueToCalendar = function() {
-  const invoices = getStoredProvidersData();
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
-  
-  let icsContent = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Creaciones JJ//Proveedores//ES\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n';
-  
-  invoices.forEach(inv => {
-    const vencimientoDate = safeParseDate(inv.fechaVencimiento);
-    const vencimientoStr = vencimientoDate ? vencimientoDate.toISOString().split('T')[0] : null;
-    
-    if (vencimientoStr && inv.saldoPendiente > 0.01) {
-      const uid = inv.id + '@creacionesjj.com';
-      const dtstart = vencimientoStr.replace(/-/g, '');
-      const dtend = vencimientoDate ? new Date(vencimientoDate.getTime() + 86400000).toISOString().split('T')[0].replace(/-/g, '') : dtstart;
-      const summary = `⚠️ Vencimiento: ${inv.proveedor} - Nota ${inv.numeroNota}`;
-      const description = `Nota de entrega vencida\\nProveedor: ${inv.proveedor}\\nNota #: ${inv.numeroNota}\\nMonto: $${inv.montoTotal}\\nSaldo pendiente: $${inv.saldoPendiente}\\nFecha vencimiento: ${formatSimpleDate(inv.fechaVencimiento)}`;
-      
-      icsContent += 'BEGIN:VEVENT\n';
-      icsContent += `UID:${uid}\n`;
-      icsContent += `DTSTART;VALUE=DATE:${dtstart}\n`;
-      icsContent += `DTEND;VALUE=DATE:${dtend}\n`;
-      icsContent += `SUMMARY:${summary}\n`;
-      icsContent += `DESCRIPTION:${description}\n`;
-      icsContent += `STATUS:CONFIRMED\n`;
-      icsContent += 'END:VEVENT\n';
-    }
-  });
-  
-  icsContent += 'END:VCALENDAR';
-  
-  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'notas_vencidas_creaciones_jj.ics';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  
-  showToast('📅 Archivo de calendario exportado. Puedes importarlo a Google Calendar.');
-};
 
 window.updateBCVRate = function(newRate) {
   const r = parseFloat(newRate);
@@ -9543,7 +8600,7 @@ window.openProviderInvoiceDetailModal = function(id) {
           ${escapeHtml(inv.proveedor)}
         </h2>
         <div style="font-size:12px; color:var(--text-muted);">
-          Nota N° <strong>${escapeHtml(inv.numeroNota)}</strong> | Recibido: <strong>${escapeHtml(formatSimpleDate(inv.fechaEntrega))}</strong> | Vence: <strong style="color:#ef4444;">${escapeHtml(formatSimpleDate(inv.fechaVencimiento))}</strong>
+          Nota N° <strong>${escapeHtml(inv.numeroNota)}</strong> | Recibido: ${escapeHtml(inv.fechaEntrega)} | Vence: <strong>${escapeHtml(inv.fechaVencimiento)}</strong>
         </div>
       </div>
       <button class="close-button" data-action="close">×</button>
@@ -9613,8 +8670,9 @@ window.openProviderInvoiceDetailModal = function(id) {
                   <td style="padding:6px 10px; font-weight:bold; color:#10b981;">$${Number(ab.monto).toFixed(2)}</td>
                   <td style="padding:6px 10px;">${escapeHtml(ab.referencia || 'N/A')}</td>
                   <td style="padding:6px 10px; color:var(--text-muted);">${escapeHtml(ab.registradoPor || 'Gerencia')}</td>
-                  <td style="padding:6px 10px;">
-                    <button type="button" onclick="window.editProviderAbono('${escapeHtml(inv.id)}', ${idx})" style="background:#0ea5e9; color:white; border:none; padding:2px 6px; border-radius:4px; font-size:10px; cursor:pointer;">✏️</button>
+                  <td style="padding:6px 10px; display:flex; gap:4px;">
+                    <button type="button" onclick="window.editProviderAbono('${escapeHtml(inv.id)}', ${idx})" style="background:#0ea5e9; color:white; border:none; padding:3px 7px; border-radius:4px; font-size:11px; cursor:pointer;" title="Editar Abono">✏️</button>
+                    <button type="button" onclick="window.deleteProviderAbono('${escapeHtml(inv.id)}', ${idx})" style="background:#ef4444; color:white; border:none; padding:3px 7px; border-radius:4px; font-size:11px; cursor:pointer;" title="Eliminar Abono">🗑️</button>
                   </td>
                 </tr>
               `).join('')}
@@ -9630,15 +8688,32 @@ window.openAddProviderPaymentModal = function(id) {
   const list = getStoredProvidersData();
   const inv = list.find(i => String(i.id) === String(id));
   if (!inv) return;
+  const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33)) || 800;
+  const saldoBs = (inv.saldoPendiente * currentTasa).toLocaleString('es-VE', { maximumFractionDigits: 2 });
 
   Swal.fire({
     title: `Abonar a ${inv.proveedor}`,
     html: `
-      <div style="text-align:left; font-size:12px;">
-        <p style="margin:0 0 10px 0; color:#9ca3af;">Saldo pendiente: <strong style="color:#ef4444;">$${inv.saldoPendiente.toFixed(2)}</strong></p>
-        <label style="display:block; margin-bottom:6px; font-weight:bold;">Monto a Abonar ($):</label>
-        <input type="number" id="swal-abono-monto" class="swal2-input" step="0.01" max="${inv.saldoPendiente}" placeholder="0.00" style="margin:0 0 10px 0; width:100%; box-sizing:border-box;">
-        <label style="display:block; margin-bottom:6px; font-weight:bold;">Método / Referencia:</label>
+      <div style="text-align:left; font-size:12.5px;">
+        <div style="background:rgba(239,68,68,0.08); border-left:3px solid #ef4444; padding:8px 10px; border-radius:6px; margin-bottom:12px;">
+          Saldo pendiente: <strong style="color:#ef4444;">$${inv.saldoPendiente.toFixed(2)}</strong> (~ Bs. ${saldoBs})
+          <div style="font-size:11px; color:#9ca3af; margin-top:2px;">Tasa BCV referencial: Bs. ${currentTasa.toFixed(2)} / $</div>
+        </div>
+
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Moneda del Abono:</label>
+        <select id="swal-abono-moneda" class="swal2-input" style="margin:0 0 10px 0; width:100%; box-sizing:border-box; font-size:13px;" onchange="
+          const isBs = this.value === 'VES';
+          document.getElementById('swal-abono-moneda-label').innerText = isBs ? 'Monto pagado en Bolívares (Bs.):' : 'Monto pagado en Dólares ($):';
+          document.getElementById('swal-abono-monto').placeholder = isBs ? '0.00 Bs.' : '0.00 $';
+        ">
+          <option value="USD">Dólares en Efectivo ($ USD)</option>
+          <option value="VES">Pago Móvil / Bolívares (Bs. VES)</option>
+        </select>
+
+        <label id="swal-abono-moneda-label" style="display:block; margin-bottom:4px; font-weight:bold;">Monto pagado en Dólares ($):</label>
+        <input type="number" id="swal-abono-monto" class="swal2-input" step="0.01" placeholder="0.00" style="margin:0 0 10px 0; width:100%; box-sizing:border-box;">
+
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Método / Referencia:</label>
         <input type="text" id="swal-abono-ref" class="swal2-input" placeholder="Ej. Pago Móvil 5407 / Efectivo" style="margin:0; width:100%; box-sizing:border-box;">
       </div>
     `,
@@ -9647,13 +8722,29 @@ window.openAddProviderPaymentModal = function(id) {
     confirmButtonColor: "#10b981",
     cancelButtonText: "Cancelar",
     preConfirm: () => {
-      const m = parseFloat(document.getElementById("swal-abono-monto")?.value);
+      const moneda = document.getElementById("swal-abono-moneda")?.value || "USD";
+      const rawMonto = parseFloat(document.getElementById("swal-abono-monto")?.value);
       const r = document.getElementById("swal-abono-ref")?.value.trim();
-      if (isNaN(m) || m <= 0) {
+
+      if (isNaN(rawMonto) || rawMonto <= 0) {
         Swal.showValidationMessage("Ingresa un monto válido mayor a 0");
         return false;
       }
-      return { monto: m, ref: r || "Efectivo" };
+
+      // Si pagó en Bolívares (Pago Móvil), convertir a USD usando la tasa oficial para no inflar la deuda
+      let montoUsd = rawMonto;
+      let montoOriginal = rawMonto;
+      if (moneda === "VES") {
+        montoUsd = parseFloat((rawMonto / currentTasa).toFixed(2));
+      }
+
+      return { 
+        monto: montoUsd, 
+        montoOriginal: montoOriginal, 
+        moneda: moneda, 
+        tasa: currentTasa, 
+        ref: r || (moneda === 'VES' ? 'Pago Móvil Bs' : 'Efectivo $') 
+      };
     }
   }).then(res => {
     if (res.isConfirmed && res.value) {
@@ -9661,27 +8752,105 @@ window.openAddProviderPaymentModal = function(id) {
       const abonoObj = {
         fecha: now.toLocaleDateString('es-VE') + ' ' + now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
         monto: res.value.monto,
-        moneda: "USD",
-        referencia: res.value.ref,
+        montoOriginal: res.value.montoOriginal,
+        moneda: res.value.moneda,
+        tasaBcv: res.value.tasa,
+        referencia: `${res.value.ref} ${res.value.moneda === 'VES' ? `(Bs. ${res.value.montoOriginal.toFixed(2)})` : ''}`,
         registradoPor: state.session?.name || "Gerencia"
       };
       inv.abonos = inv.abonos || [];
       inv.abonos.push(abonoObj);
-      inv.abonado = Number(inv.abonado || 0) + res.value.monto;
-      inv.saldoPendiente = Math.max(0, Number(inv.montoTotal) - inv.abonado);
+      
+      // Recalcular saldo total de la nota
+      const totalAbonado = inv.abonos.reduce((acc, a) => acc + Number(a.monto || 0), 0);
+      inv.abonado = parseFloat(totalAbonado.toFixed(2));
+      inv.saldoPendiente = Math.max(0, parseFloat((Number(inv.montoTotal) - inv.abonado).toFixed(2)));
       inv.estado = inv.saldoPendiente <= 0.01 ? "Pagada" : "Parcial";
 
       saveStoredProvidersData(list);
       try {
-        api("profile_add_provider_payment", { id: inv.id, monto: res.value.monto, referencia: res.value.ref }).catch(()=>{});
+        api("profile_add_provider_payment", { id: inv.id, monto: res.value.monto, referencia: abonoObj.referencia }).catch(()=>{});
       } catch(e){}
 
-      showToast(`✅ Abono de $${res.value.monto.toFixed(2)} registrado.`);
+      showToast(`✅ Abono registrado: $${res.value.monto.toFixed(2)} ${res.value.moneda === 'VES' ? `(Bs. ${res.value.montoOriginal.toFixed(2)})` : ''}`);
       closeModal();
       window.openProviderInvoiceDetailModal(inv.id);
       if (typeof render === "function") render();
     }
   });
+};
+
+// FUNCIÓN PARA EDITAR ABONO DE PROVEEDOR
+window.editProviderAbono = function(id, abonoIndex) {
+  const list = getStoredProvidersData();
+  const inv = list.find(i => String(i.id) === String(id));
+  if (!inv || !inv.abonos || !inv.abonos[abonoIndex]) return;
+
+  const abono = inv.abonos[abonoIndex];
+  const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33)) || 800;
+
+  Swal.fire({
+    title: `✏️ Editar Abono (${inv.proveedor})`,
+    html: `
+      <div style="text-align:left; font-size:12.5px;">
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Monto Equivalente en Dólares ($):</label>
+        <input type="number" id="swal-edit-abono-monto" class="swal2-input" step="0.01" value="${abono.monto}" style="margin:0 0 10px 0; width:100%; box-sizing:border-box;">
+
+        <label style="display:block; margin-bottom:4px; font-weight:bold;">Método / Referencia:</label>
+        <input type="text" id="swal-edit-abono-ref" class="swal2-input" value="${escapeHtml(abono.referencia || '')}" style="margin:0; width:100%; box-sizing:border-box;">
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: "Guardar Cambios",
+    confirmButtonColor: "#0ea5e9",
+    cancelButtonText: "Cancelar",
+    preConfirm: () => {
+      const nuevoMonto = parseFloat(document.getElementById("swal-edit-abono-monto")?.value);
+      const nuevaRef = document.getElementById("swal-edit-abono-ref")?.value.trim();
+      if (isNaN(nuevoMonto) || nuevoMonto < 0) {
+        Swal.showValidationMessage("Ingresa un monto válido");
+        return false;
+      }
+      return { monto: nuevoMonto, ref: nuevaRef };
+    }
+  }).then(res => {
+    if (res.isConfirmed && res.value) {
+      abono.monto = res.value.monto;
+      abono.referencia = res.value.ref || abono.referencia;
+      
+      // Recalcular saldos de la factura
+      const totalAbonado = inv.abonos.reduce((acc, a) => acc + Number(a.monto || 0), 0);
+      inv.abonado = parseFloat(totalAbonado.toFixed(2));
+      inv.saldoPendiente = Math.max(0, parseFloat((Number(inv.montoTotal) - inv.abonado).toFixed(2)));
+      inv.estado = inv.saldoPendiente <= 0.01 ? "Pagada" : (inv.abonado > 0 ? "Parcial" : "Pendiente");
+
+      saveStoredProvidersData(list);
+      showToast("✅ Abono corregido y saldo recalculado.");
+      closeModal();
+      window.openProviderInvoiceDetailModal(inv.id);
+      if (typeof render === "function") render();
+    }
+  });
+};
+
+// FUNCIÓN PARA ELIMINAR ABONO DE PROVEEDOR CON RECALCULO AUTOMÁTICO
+window.deleteProviderAbono = function(id, abonoIndex) {
+  if (!confirm("¿Estás seguro de que deseas eliminar este abono? El saldo de la nota será recalculado automáticamente.")) return;
+  const list = getStoredProvidersData();
+  const inv = list.find(i => String(i.id) === String(id));
+  if (!inv || !inv.abonos || !inv.abonos[abonoIndex]) return;
+
+  inv.abonos.splice(abonoIndex, 1);
+  const totalAbonado = inv.abonos.reduce((acc, a) => acc + Number(a.monto || 0), 0);
+  inv.abonado = parseFloat(totalAbonado.toFixed(2));
+  inv.saldoPendiente = Math.max(0, parseFloat((Number(inv.montoTotal) - inv.abonado).toFixed(2)));
+  inv.estado = inv.saldoPendiente <= 0.01 ? "Pagada" : (inv.abonado > 0 ? "Parcial" : "Pendiente");
+
+  saveStoredProvidersData(list);
+  showToast("🗑️ Abono eliminado y saldo restaurado.");
+  closeModal();
+  window.openProviderInvoiceDetailModal(inv.id);
+  if (typeof render === "function") render();
 };
 
 window.deleteProviderInvoice = async function(id) {
@@ -9936,11 +9105,7 @@ function cashView() {
               </div>
               <div>
                 <span style="font-size:10.5px; color:var(--text-muted); display:block;">📲 PAGO MÓVIL:</span>
-                <strong style="color:var(--text-main); font-size:13px;">Bs. ${Number(c.totalPagoMovilBs || 0).toLocaleString('es-VE')}</strong>
-              </div>
-              <div>
-                <span style="font-size:10.5px; color:var(--text-muted); display:block;">🏦 TRANSFERENCIAS:</span>
-                <strong style="color:var(--text-main); font-size:13px;">Bs. ${Number(c.totalTransferenciaBs || 0).toLocaleString('es-VE')}</strong>
+                <strong style="color:var(--text-main); font-size:13px;">Bs. ${Number(c.totalPagoMovilBs).toLocaleString('es-VE')}</strong>
               </div>
               <div>
                 <span style="font-size:10.5px; color:var(--text-muted); display:block;">💵 EFECTIVO BS:</span>
@@ -9951,25 +9116,6 @@ function cashView() {
                 <strong style="color:#10b981; font-size:13px;">$${Number(c.totalEfectivoUSD).toFixed(2)}</strong>
               </div>
             </div>
-
-            <!-- Desglose de pagos móviles y transferencias -->
-            ${(c.detalles?.pagosMoviles?.length || 0) > 0 || (c.detalles?.transferencias?.length || 0) > 0 ? `
-              <div style="margin-top:10px; background:rgba(0,0,0,0.15); border-radius:8px; padding:10px;">
-                <span style="font-size:11px; font-weight:bold; color:#a78bfa; text-transform:uppercase; display:block; margin-bottom:6px;">
-                  📋 Desglose de Pagos Electrónicos:
-                </span>
-                ${(c.detalles?.pagosMoviles || []).map(pm => `
-                  <div style="font-size:11px; margin-bottom:4px; padding:4px; background:rgba(167,139,250,0.1); border-radius:4px;">
-                    <strong>Pago Móvil:</strong> Bs. ${Number(pm.monto).toLocaleString('es-VE')} <span style="color:#a78bfa;">Ref: ${escapeHtml(pm.referencia || 'N/A')}</span>
-                  </div>
-                `).join('')}
-                ${(c.detalles?.transferencias || []).map(tf => `
-                  <div style="font-size:11px; margin-bottom:4px; padding:4px; background:rgba(16,185,129,0.1); border-radius:4px;">
-                    <strong>Transferencia:</strong> Bs. ${Number(tf.monto).toLocaleString('es-VE')} <span style="color:#10b981;">Ref: ${escapeHtml(tf.referencia || 'N/A')}</span>
-                  </div>
-                `).join('')}
-              </div>
-            ` : ''}
 
             ${c.fotoRespaldo ? `
               <div style="margin-top:10px;">
@@ -9987,7 +9133,6 @@ function cashView() {
 
 window.openNewCashCloseModal = function() {
   let photoRespaldoBase64 = "";
-  let pagosMoviles = [{ monto: "", referencia: "" }]; // Lista de pagos móviles individuales
 
   openModal(`
     <div class="modal-head">
@@ -9995,7 +9140,7 @@ window.openNewCashCloseModal = function() {
         <h2 style="margin:0; display:flex; align-items:center; gap:8px;">
           <i class="fas fa-cash-register" style="color:#f59e0b;"></i> Nuevo Cierre de Turno / Caja
         </h2>
-        <div style="font-size:12px; color:var(--text-muted);">Basado en la planilla física de Creaciones JJ. Gerencia solo.</div>
+        <div style="font-size:12px; color:var(--text-muted);">Basado en la planilla física de Creaciones JJ.</div>
       </div>
       <button class="close-button" data-action="close">×</button>
     </div>
@@ -10035,33 +9180,18 @@ window.openNewCashCloseModal = function() {
         <input type="number" id="caja-punto-bs" placeholder="Total cobrado en punto (Bs)" step="0.01" value="0.00" oninput="window.calcCashTotals()">
       </div>
 
-      <!-- 2. PAGO MÓVIL CON REFERENCIAS (Desglose individual) -->
+      <!-- 2. PAGO MÓVIL CON REFERENCIA -->
       <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:10px; margin-bottom:6px;">
         <span style="font-size:11px; font-weight:800; color:#a78bfa; text-transform:uppercase; display:block; margin-bottom:6px;">
-          📲 Pagos Móviles (Desglose individual con referencias):
+          📲 Pago Móvil (Monto Bs y Referencias):
         </span>
-        <div id="pagos-moviles-container">
-          <!-- Se llena dinámicamente -->
+        <div class="form-inline" style="gap:8px;">
+          <input type="number" id="caja-pagomovil-bs" placeholder="Monto total Pago Móvil (Bs)" step="0.01" value="0.00" oninput="window.calcCashTotals()" style="flex:1;">
+          <input type="text" id="caja-pagomovil-ref" placeholder="Últimos 4 dígitos / Ref (ej: 5407, 8812)" style="flex:1.5;">
         </div>
-        <button type="button" id="btn-add-pagomovil" style="background:#a78bfa; color:white; border:none; padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer; margin-top:6px;">
-          + Agregar otro pago móvil
-        </button>
       </div>
 
-      <!-- 3. TRANSFERENCIAS BANCARIAS -->
-      <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:10px; margin-bottom:6px;">
-        <span style="font-size:11px; font-weight:800; color:#10b981; text-transform:uppercase; display:block; margin-bottom:6px;">
-          🏦 Transferencias Bancarias (Desglose individual con referencias):
-        </span>
-        <div id="transferencias-container">
-          <!-- Se llena dinámicamente -->
-        </div>
-        <button type="button" id="btn-add-transferencia" style="background:#10b981; color:white; border:none; padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer; margin-top:6px;">
-          + Agregar otra transferencia
-        </button>
-      </div>
-
-      <!-- 4. EFECTIVOS -->
+      <!-- 3. EFECTIVOS -->
       <div class="form-inline" style="gap:8px;">
         <label class="field" style="flex:1;">
           <span class="field-label">💵 EFECTIVO BOLÍVARES (Bs):</span>
@@ -10089,15 +9219,15 @@ window.openNewCashCloseModal = function() {
       <div class="physical-invoice-box" style="margin-top:6px;">
         <div class="physical-invoice-header">
           <span style="font-size:11px; font-weight:800; color:#f59e0b; text-transform:uppercase;">
-            📸 Foto/PDF de la Planilla Física de Cierre (Auditoría):
+            📸 Foto de la Planilla Física de Cierre (Auditoría):
           </span>
           <div style="display:flex; gap:6px;">
             <button type="button" class="secondary-button" id="btn-cam-caja" style="background:#f59e0b; color:white; border:none; padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer;">
               📸 Tomar Foto
             </button>
             <label class="secondary-button" style="background:var(--bg-main); border:1px solid var(--border-color); padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer;">
-              📁 Subir Foto/PDF
-              <input type="file" id="caja-file-input" accept="image/*,.pdf" style="display:none;">
+              📁 Subir Foto
+              <input type="file" id="caja-file-input" accept="image/*" style="display:none;">
             </label>
           </div>
         </div>
@@ -10121,96 +9251,14 @@ window.openNewCashCloseModal = function() {
     </form>
   `);
 
-  // Función para renderizar pagos móviles
-  window.renderPagosMoviles = function() {
-    const container = document.getElementById("pagos-moviles-container");
-    if (!container) return;
-    
-    container.innerHTML = pagosMoviles.map((pm, idx) => `
-      <div class="form-inline" style="gap:8px; margin-bottom:6px;">
-        <input type="number" placeholder="Monto (Bs)" step="0.01" value="${pm.monto}" 
-               class="pm-monto" data-index="${idx}" oninput="window.calcCashTotals()" style="flex:1;">
-        <input type="text" placeholder="Referencia (ej: 5407)" value="${pm.referencia}" 
-               class="pm-ref" data-index="${idx}" style="flex:1.5;">
-        <button type="button" onclick="window.removePagoMovil(${idx})" 
-                style="background:#ef4444; color:white; border:none; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer;">×</button>
-      </div>
-    `).join('');
-  };
-
-  // Función para renderizar transferencias
-  window.renderTransferencias = function() {
-    const container = document.getElementById("transferencias-container");
-    if (!container) return;
-    
-    const transferencias = window.transferenciasList || [{ monto: "", referencia: "" }];
-    container.innerHTML = transferencias.map((tf, idx) => `
-      <div class="form-inline" style="gap:8px; margin-bottom:6px;">
-        <input type="number" placeholder="Monto (Bs)" step="0.01" value="${tf.monto}" 
-               class="tf-monto" data-index="${idx}" oninput="window.calcCashTotals()" style="flex:1;">
-        <input type="text" placeholder="Referencia bancaria" value="${tf.referencia}" 
-               class="tf-ref" data-index="${idx}" style="flex:1.5;">
-        <button type="button" onclick="window.removeTransferencia(${idx})" 
-                style="background:#ef4444; color:white; border:none; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer;">×</button>
-      </div>
-    `).join('');
-  };
-
-  // Funciones para agregar/remover pagos móviles
-  window.addPagoMovil = function() {
-    pagosMoviles.push({ monto: "", referencia: "" });
-    window.renderPagosMoviles();
-  };
-  window.removePagoMovil = function(idx) {
-    if (pagosMoviles.length > 1) {
-      pagosMoviles.splice(idx, 1);
-      window.renderPagosMoviles();
-      window.calcCashTotals();
-    }
-  };
-
-  // Funciones para agregar/remover transferencias
-  window.transferenciasList = [{ monto: "", referencia: "" }];
-  window.addTransferencia = function() {
-    window.transferenciasList.push({ monto: "", referencia: "" });
-    window.renderTransferencias();
-  };
-  window.removeTransferencia = function(idx) {
-    if (window.transferenciasList.length > 1) {
-      window.transferenciasList.splice(idx, 1);
-      window.renderTransferencias();
-      window.calcCashTotals();
-    }
-  };
-
-  // Renderizar iniciales
-  window.renderPagosMoviles();
-  window.renderTransferencias();
-
-  // Event listeners para botones
-  document.getElementById("btn-add-pagomovil")?.addEventListener("click", window.addPagoMovil);
-  document.getElementById("btn-add-transferencia")?.addEventListener("click", window.addTransferencia);
-
   window.calcCashTotals = function() {
     const pto = parseFloat(document.getElementById("caja-punto-bs")?.value || 0);
-    
-    // Sumar pagos móviles
-    let totalPm = 0;
-    document.querySelectorAll(".pm-monto").forEach(el => {
-      totalPm += parseFloat(el.value || 0);
-    });
-    
-    // Sumar transferencias
-    let totalTf = 0;
-    document.querySelectorAll(".tf-monto").forEach(el => {
-      totalTf += parseFloat(el.value || 0);
-    });
-    
+    const pm = parseFloat(document.getElementById("caja-pagomovil-bs")?.value || 0);
     const efBs = parseFloat(document.getElementById("caja-efectivo-bs")?.value || 0);
     const efUSD = parseFloat(document.getElementById("caja-efectivo-usd")?.value || 0);
     const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
 
-    const totalBs = pto + totalPm + totalTf + efBs;
+    const totalBs = pto + pm + efBs;
     const totalUSD = (totalBs / (tasa || 1)) + efUSD;
 
     const elBs = document.getElementById("caja-total-preview-bs");
@@ -10275,38 +9323,14 @@ window.openNewCashCloseModal = function() {
       const inicioBs = parseFloat(document.getElementById("caja-inicio-bs").value || 0);
       const inicioUSD = parseFloat(document.getElementById("caja-inicio-usd").value || 0);
       const pto = parseFloat(document.getElementById("caja-punto-bs").value || 0);
-      
-      // Recopilar pagos móviles individuales
-      const pagosMovilesList = [];
-      document.querySelectorAll(".pm-monto").forEach((el, idx) => {
-        const monto = parseFloat(el.value || 0);
-        const refEl = document.querySelector(`.pm-ref[data-index="${idx}"]`);
-        const referencia = refEl ? refEl.value.trim() : "";
-        if (monto > 0) {
-          pagosMovilesList.push({ monto, referencia });
-        }
-      });
-      
-      // Recopilar transferencias individuales
-      const transferenciasList = [];
-      document.querySelectorAll(".tf-monto").forEach((el, idx) => {
-        const monto = parseFloat(el.value || 0);
-        const refEl = document.querySelector(`.tf-ref[data-index="${idx}"]`);
-        const referencia = refEl ? refEl.value.trim() : "";
-        if (monto > 0) {
-          transferenciasList.push({ monto, referencia });
-        }
-      });
-      
-      const efBs = parseFloat(document.getElementById("caja-efectivo-bs")?.value || 0);
-      const efUSD = parseFloat(document.getElementById("caja-efectivo-usd")?.value || 0);
+      const pm = parseFloat(document.getElementById("caja-pagomovil-bs").value || 0);
+      const pmRef = document.getElementById("caja-pagomovil-ref").value.trim();
+      const efBs = parseFloat(document.getElementById("caja-efectivo-bs").value || 0);
+      const efUSD = parseFloat(document.getElementById("caja-efectivo-usd").value || 0);
       const obs = document.getElementById("caja-obs").value.trim();
       const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
-      
-      // Calcular totales
-      const totalPmBs = pagosMovilesList.reduce((sum, pm) => sum + pm.monto, 0);
-      const totalTfBs = transferenciasList.reduce((sum, tf) => sum + tf.monto, 0);
-      const totalBs = pto + totalPmBs + totalTfBs + efBs;
+
+      const totalBs = pto + pm + efBs;
       const totalUSD = (totalBs / (tasa || 1)) + efUSD;
 
       const newClose = {
@@ -10316,17 +9340,13 @@ window.openNewCashCloseModal = function() {
         inicioBs: inicioBs,
         inicioUSD: inicioUSD,
         totalPuntoBs: pto,
-        totalPagoMovilBs: totalPmBs,
-        totalTransferenciaBs: totalTfBs,
+        totalPagoMovilBs: pm,
         totalEfectivoBs: efBs,
         totalEfectivoUSD: efUSD,
         tasaBCV: tasa,
         totalDiaBs: totalBs,
         totalDiaUSD: totalUSD,
-        detalles: {
-          pagosMoviles: pagosMovilesList,
-          transferencias: transferenciasList
-        },
+        detalles: { pmRef: pmRef },
         fotoRespaldo: photoRespaldoBase64,
         responsable: state.session?.name || "Gerencia",
         observaciones: obs
@@ -12050,7 +11070,7 @@ function getOrderElapsedMinutes(order) {
   }
 
   const pausedMins = Math.max(0, Math.round(Number(order.tiempoPausadoMin || 0)));
-  const isPaused = isPausedProductionStatus(estado);
+  const isPaused = (estado === "Pausado" || estado === "Esperando Imprenta");
 
   let endMs = Date.now();
   if (isPaused) {
@@ -12059,25 +11079,8 @@ function getOrderElapsedMinutes(order) {
       if (!isNaN(pMs) && pMs >= startMs) {
         endMs = pMs;
       }
-    } else {
-      // Fallback para pedidos pausados donde ultimaPausa no se guardó en Google Sheets:
-      // buscar timestamp en order.notas (ej: 📌 [26/09/2026 09:09 PM - Moises]: En espera de planchado)
-      let foundMs = null;
-      if (order.notas && typeof order.notas === "string") {
-        const matches = [...order.notas.matchAll(/\[(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)[\s\-]/gi)];
-        if (matches.length > 0) {
-          const lastMatch = matches[matches.length - 1];
-          const parsed = safeParseDate(`${lastMatch[1]} a las ${lastMatch[2]}`);
-          if (parsed && !isNaN(parsed.getTime()) && parsed.getTime() >= startMs) {
-            foundMs = parsed.getTime();
-          }
-        }
-      }
-      if (foundMs) {
-        endMs = foundMs;
-      } else if (order.duracionRealMin && Number(order.duracionRealMin) > 0) {
-        return Math.max(0, Math.round(Number(order.duracionRealMin)));
-      }
+    } else if (order.duracionRealMin && Number(order.duracionRealMin) > 0) {
+      return Math.max(0, Math.round(Number(order.duracionRealMin)));
     }
   } else if (order.finProduccion) {
     const fMs = parseSafeTimestampMs(order.finProduccion);
@@ -12125,8 +11128,6 @@ if (!window._stopwatchInterval) {
         const human = formatMinutesToHuman(mins);
         if (ord.estado === 'Esperando Imprenta') {
           el.innerHTML = `<i class="fas fa-print"></i> ${mins} min (Imprenta)`;
-        } else if (ord.estado === 'Esperando Planchado') {
-          el.innerHTML = `<i class="fas fa-tshirt"></i> ${mins} min (Planchado)`;
         } else if (ord.estado === 'Pausado') {
           el.innerHTML = `<i class="fas fa-pause-circle"></i> ${mins > 0 ? `${mins} min (Pausado)` : 'Pausado'}`;
         } else {
@@ -12143,8 +11144,6 @@ if (!window._stopwatchInterval) {
         if (modalStopwatchText) {
           if (state.selectedOrder.estado === 'Esperando Imprenta') {
             modalStopwatchText.textContent = `${human} (Congelado por Imprenta Externa)`;
-          } else if (state.selectedOrder.estado === 'Esperando Planchado') {
-            modalStopwatchText.textContent = `${human} (Congelado por Planchado)`;
           } else if (state.selectedOrder.estado === 'Pausado') {
             modalStopwatchText.textContent = `${human} (Pausado)`;
           } else {
