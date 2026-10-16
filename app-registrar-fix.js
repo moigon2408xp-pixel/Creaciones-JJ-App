@@ -5399,7 +5399,7 @@ function formOrder() {
       </label>
 
       <div class="field">
-        <span class="field-label">🖼️ FOTOS DE REFERENCIA DEL CLIENTE (HASTA 3 FOTOS):</span>
+        <span class="field-label">🖼️ FOTOS DE REFERENCIA DEL CLIENTE (MÚLTIPLES FOTOS - HASTA 30):</span>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
           <button type="button" class="secondary-button" id="form-cam-ref-btn" style="background:#0284c7; color:white; border:none; display:flex; align-items:center; gap:6px; font-size:12px; padding:6px 10px; font-weight:bold;">
             📸 Tomar con Cámara Directa
@@ -5453,8 +5453,8 @@ function formOrder() {
   };
 
   document.getElementById("form-cam-ref-btn")?.addEventListener("click", () => {
-    if (formCapturedImages.length >= 3) {
-      alert("Límite de 3 fotos de referencia alcanzado.");
+    if (formCapturedImages.length >= 30) {
+      alert("Límite de 30 fotos de referencia alcanzado.");
       return;
     }
     openLiveCameraModal((base64) => {
@@ -5467,7 +5467,7 @@ function formOrder() {
   document.getElementById("reference-files-input")?.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
     for (const f of files) {
-      if (formCapturedImages.length >= 3) break;
+      if (formCapturedImages.length >= 30) break;
       const compressed = await compressImageFile(f);
       const base64 = await new Promise((resolve) => {
         const reader = new FileReader();
