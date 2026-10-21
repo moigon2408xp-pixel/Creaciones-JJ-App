@@ -2455,6 +2455,48 @@ function reportsView() {
     }
   });
 
+  // Resumen Financiero Ejecutivo del Período
+  const allPeriodCases = [...periodActiveOrders, ...periodFinishedOrders];
+  let periodTotalBilled = 0;
+  let periodTotalCollected = 0;
+  let periodTotalReceivable = 0;
+  let periodQuotedCount = 0;
+
+  allPeriodCases.forEach(o => {
+    const f = getOrderFinances(o);
+    if (f.total > 0) {
+      periodTotalBilled += f.total;
+      periodTotalCollected += f.abono;
+      periodTotalReceivable += f.saldo;
+      periodQuotedCount++;
+    }
+  });
+  const periodAvgTicket = periodQuotedCount > 0 ? (periodTotalBilled / periodQuotedCount) : 0;
+  const periodCollectionRate = periodTotalBilled > 0 ? Math.round((periodTotalCollected / periodTotalBilled) * 100) : 100;
+
+  // Desglose de Producción por Categoría
+  const categoryStats = {
+    "Toppers 3D": 0,
+    "Papelería & Cajas": 0,
+    "DTF & Sublimación": 0,
+    "Diseño & Varios": 0
+  };
+  allPeriodCases.forEach(o => {
+    const t = String(o.tipo || "").toLowerCase();
+    const m = String(o.motivo || "").toLowerCase();
+    const str = `${t} ${m}`;
+    if (str.includes("topper")) {
+      categoryStats["Toppers 3D"]++;
+    } else if (str.includes("caja") || str.includes("papel") || str.includes("invitaci") || str.includes("bander") || str.includes("letra") || str.includes("cotill")) {
+      categoryStats["Papelería & Cajas"]++;
+    } else if (str.includes("dtf") || str.includes("sublim") || str.includes("taza") || str.includes("franela") || str.includes("estamp")) {
+      categoryStats["DTF & Sublimación"]++;
+    } else {
+      categoryStats["Diseño & Varios"]++;
+    }
+  });
+  const totalCatSum = allPeriodCases.length || 1;
+
   return `
     <div style="max-width:1100px; margin:0 auto; padding-bottom:30px;">
       <!-- Filtros de Tipo de Vista y Fecha -->
@@ -2545,6 +2587,65 @@ function reportsView() {
           </div>
           <div style="font-size:28px; font-weight:900; color:var(--text-main);">${avgMins} <span style="font-size:14px; font-weight:bold; color:var(--text-muted);">min</span></div>
           <div style="font-size:11px; color:var(--text-muted);">Por orden física finalizada</div>
+        </div>
+      </div>
+
+      <!-- Balance Económico y Distribución por Categoría del Período -->
+      <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:16px; margin-bottom:20px; box-shadow:var(--shadow-sm);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+          <h3 style="margin:0; font-size:15px; color:#059669; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-coins"></i> Balance Económico y Rendimiento Financiero del Período
+          </h3>
+          <span style="font-size:11.5px; font-weight:700; color:var(--text-muted);">
+            ${periodQuotedCount} cotizados de ${allPeriodCases.length} pedidos
+          </span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px;">
+          <div style="background:rgba(2,132,199,0.06); border:1px solid #0284c7; padding:12px; border-radius:8px; text-align:center;">
+            <span style="font-size:10.5px; font-weight:700; color:#0284c7; text-transform:uppercase;">Facturación Período</span>
+            <div style="font-size:22px; font-weight:900; color:#0284c7; margin-top:2px;">$${periodTotalBilled.toFixed(2)}</div>
+            <small style="font-size:10.5px; color:var(--text-muted);">${periodQuotedCount} órdenes con precio</small>
+          </div>
+          <div style="background:rgba(16,185,129,0.06); border:1px solid #059669; padding:12px; border-radius:8px; text-align:center;">
+            <span style="font-size:10.5px; font-weight:700; color:#059669; text-transform:uppercase;">Cobranza Efectiva</span>
+            <div style="font-size:22px; font-weight:900; color:#059669; margin-top:2px;">$${periodTotalCollected.toFixed(2)}</div>
+            <small style="font-size:10.5px; color:#059669; font-weight:bold;">${periodCollectionRate}% recaudado</small>
+          </div>
+          <div style="background:rgba(239,68,68,0.06); border:1px solid #ef4444; padding:12px; border-radius:8px; text-align:center;">
+            <span style="font-size:10.5px; font-weight:700; color:#ef4444; text-transform:uppercase;">Saldo por Cobrar</span>
+            <div style="font-size:22px; font-weight:900; color:#ef4444; margin-top:2px;">$${periodTotalReceivable.toFixed(2)}</div>
+            <small style="font-size:10.5px; color:#ef4444; font-weight:bold;">Pendiente de liquidación</small>
+          </div>
+          <div style="background:rgba(147,51,234,0.06); border:1px solid #9333ea; padding:12px; border-radius:8px; text-align:center;">
+            <span style="font-size:10.5px; font-weight:700; color:#9333ea; text-transform:uppercase;">Ticket Promedio</span>
+            <div style="font-size:22px; font-weight:900; color:#9333ea; margin-top:2px;">$${periodAvgTicket.toFixed(2)}</div>
+            <small style="font-size:10.5px; color:var(--text-muted);">Por trabajo cotizado</small>
+          </div>
+        </div>
+
+        <!-- Desglose de Producción por Categoría -->
+        <div style="border-top:1px dashed var(--border-color); padding-top:12px;">
+          <div style="font-size:12px; font-weight:800; color:var(--text-muted); margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-chart-pie"></i> DISTRIBUCIÓN DE PRODUCCIÓN POR LÍNEA DE PRODUCTO (${allPeriodCases.length} PEDIDOS)
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+            ${Object.entries(categoryStats).map(([catName, count]) => {
+              const pct = Math.round((count / totalCatSum) * 100);
+              const barColor = catName === 'Toppers 3D' ? '#0ea5e9' : catName === 'Papelería & Cajas' ? '#8b5cf6' : catName === 'DTF & Sublimación' ? '#f59e0b' : '#10b981';
+              return `
+                <div style="background:var(--bg-main); padding:8px 12px; border-radius:8px; border:1px solid var(--border-color);">
+                  <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700; margin-bottom:4px;">
+                    <span>${catName}</span>
+                    <span style="color:${barColor}; font-weight:900;">${count} (${pct}%)</span>
+                  </div>
+                  <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:10px; overflow:hidden;">
+                    <div style="background:${barColor}; width:${pct}%; height:100%; border-radius:10px;"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
         </div>
       </div>
 
@@ -2934,16 +3035,23 @@ function financesView() {
   if (!isLead()) {
     return `<div class="empty"><strong>Acceso Restringido: Este módulo solo está disponible para Jefes y Managers.</strong></div>`;
   }
+
+  // 1. Consolidar todas las órdenes activas y terminadas no canceladas
+  const allOrders = state.data?.allOrders || [];
+  const finishedOrders = state.data?.finishedOrders || [];
+  const isNotCancelled = (o) => String(o.estado || "").toLowerCase().trim() !== "cancelado";
   
-  const finished = (state.data.finishedOrders || []).filter(o => String(o.estado || "").toLowerCase().trim() !== "cancelado");
+  const orderMap = new Map();
+  [...finishedOrders.filter(isNotCancelled), ...allOrders.filter(o => active(o) && isNotCancelled(o))].forEach(o => {
+    if (o && o.id) orderMap.set(String(o.id).trim(), o);
+  });
+  const consolidated = Array.from(orderMap.values());
+
+  // 2. Filtro temporal
+  const currentTf = state.financesTimeframe || 'month';
   const now = new Date();
   const parseFinDate = (o) => safeParseDate(o.finProduccion || o.fechaCierre || o.entrega || o.creado);
-  
-  const todayOrders = finished.filter(o => {
-    const d = parseFinDate(o);
-    return d && d.toDateString() === now.toDateString();
-  });
-  
+
   const day = now.getDay();
   const diffToMon = (day === 0 ? -6 : 1 - day);
   const monday = new Date(now);
@@ -2952,88 +3060,505 @@ function financesView() {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   sunday.setHours(23,59,59,999);
-  const weekOrders = finished.filter(o => {
-    const d = parseFinDate(o);
-    return d && d >= monday && d <= sunday;
-  });
-  
-  const monthOrders = finished.filter(o => {
-    const d = parseFinDate(o);
-    return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
-  
-  const sumRev = (arr) => arr.reduce((s, o) => s + Number(o.costo || 0), 0);
 
-  const revToday = sumRev(todayOrders);
-  const revWeek = sumRev(weekOrders);
-  const revMonth = sumRev(monthOrders);
-  const revAll = sumRev(finished);
-  const paidOrders = finished.filter(o => Number(o.costo || 0) > 0);
+  const timeFiltered = consolidated.filter(o => {
+    if (currentTf === 'all') return true;
+    const d = parseFinDate(o);
+    if (!d) return true;
+    if (currentTf === 'today') {
+      return d.toDateString() === now.toDateString();
+    } else if (currentTf === 'week') {
+      return d >= monday && d <= sunday;
+    } else if (currentTf === 'month') {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  });
+
+  // 3. Asociar finanzas calculadas a cada orden
+  timeFiltered.forEach(o => {
+    o._fin = getOrderFinances(o);
+  });
+
+  // 4. Métricas consolidadas de Ventas del período seleccionado
+  let totalBilled = 0;
+  let totalCollected = 0;
+  let totalReceivable = 0;
+  let quotedCount = 0;
+
+  const orderLineDistribution = {
+    "Toppers 3D": 0,
+    "Papelería & Cajas": 0,
+    "DTF & Sublimación": 0,
+    "Diseño & Varios": 0
+  };
+
+  timeFiltered.forEach(o => {
+    const f = o._fin;
+    if (f.total > 0) {
+      totalBilled += f.total;
+      totalCollected += f.abono;
+      totalReceivable += f.saldo;
+      quotedCount++;
+
+      const t = String(o.tipo || "").toLowerCase();
+      const m = String(o.motivo || "").toLowerCase();
+      const str = `${t} ${m}`;
+      if (str.includes("topper")) {
+        orderLineDistribution["Toppers 3D"] += f.total;
+      } else if (str.includes("caja") || str.includes("papel") || str.includes("invitaci") || str.includes("bander") || str.includes("letra") || str.includes("cotill")) {
+        orderLineDistribution["Papelería & Cajas"] += f.total;
+      } else if (str.includes("dtf") || str.includes("sublim") || str.includes("taza") || str.includes("franela") || str.includes("estamp")) {
+        orderLineDistribution["DTF & Sublimación"] += f.total;
+      } else {
+        orderLineDistribution["Diseño & Varios"] += f.total;
+      }
+    }
+  });
+
+  const avgTicket = quotedCount > 0 ? (totalBilled / quotedCount) : 0;
+  const collectionRate = totalBilled > 0 ? ((totalCollected / totalBilled) * 100) : 100;
+
+  // 4b. Consolidar Gastos de Proveedores del mismo período
+  const allInvoices = getStoredProvidersData();
+  const timeFilteredInvoices = allInvoices.filter(inv => {
+    if (currentTf === 'all') return true;
+    const rawDate = inv.fechaEntrega || inv.fechaVencimiento || inv.fechaRegistro || inv.fecha;
+    const d = safeParseDate(rawDate);
+    if (!d) return true;
+    if (currentTf === 'today') {
+      return d.toDateString() === now.toDateString();
+    } else if (currentTf === 'week') {
+      return d >= monday && d <= sunday;
+    } else if (currentTf === 'month') {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  });
+
+  let totalExpensesBilled = 0;   // Compras totales a proveedores
+  let totalExpensesPaid = 0;     // Salidas reales de dinero
+  let totalExpensesPending = 0;  // Deuda por pagar a proveedores
+  const providerDistribution = {};
+
+  timeFilteredInvoices.forEach(inv => {
+    const tot = parseFloat(inv.montoTotal || 0);
+    const abo = parseFloat(inv.abonado || 0);
+    const sal = parseFloat(inv.saldoPendiente !== undefined ? inv.saldoPendiente : Math.max(0, tot - abo));
+    totalExpensesBilled += tot;
+    totalExpensesPaid += abo;
+    totalExpensesPending += sal;
+
+    const provName = String(inv.proveedor || "Otros Proveedores").trim();
+    providerDistribution[provName] = (providerDistribution[provName] || 0) + tot;
+  });
+
+  // Balance Operativo y Márgenes
+  const netCashFlow = totalCollected - totalExpensesPaid; // Efectivo neto real en caja
+  const projectedProfit = totalBilled - totalExpensesBilled; // Margen de venta total vs compras
+  const profitMargin = totalBilled > 0 ? Math.round((projectedProfit / totalBilled) * 100) : 0;
+  const showCharts = state.financesShowCharts !== false; // Visible por defecto
+
+  // Escala para gráficos de barra
+  const maxScale = Math.max(totalBilled, totalExpensesBilled, totalCollected, totalExpensesPaid, 1);
+  const wCollected = Math.min(100, Math.max(5, Math.round((totalCollected / maxScale) * 100)));
+  const wExpenses = Math.min(100, Math.max(5, Math.round((totalExpensesPaid / maxScale) * 100)));
+  const wNet = Math.min(100, Math.max(5, Math.round((Math.max(0, netCashFlow) / maxScale) * 100)));
+
+  // Cálculos para Donut SVG (Circunferencia = 376.99)
+  const fundSum = (totalCollected + totalReceivable + totalExpensesPending) || 1;
+  const arc1Len = (totalCollected / fundSum) * 376.99;
+  const arc2Len = (totalReceivable / fundSum) * 376.99;
+  const arc3Len = (totalExpensesPending / fundSum) * 376.99;
+
+  // Top Proveedores
+  const sortedProviders = Object.entries(providerDistribution).sort((a,b) => b[1] - a[1]).slice(0, 4);
+  const maxProvVal = sortedProviders.length > 0 && sortedProviders[0][1] > 0 ? sortedProviders[0][1] : 1;
+
+  // Top Líneas de Producción
+  const sortedCategories = Object.entries(orderLineDistribution).sort((a,b) => b[1] - a[1]);
+  const maxCatVal = sortedCategories.length > 0 && sortedCategories[0][1] > 0 ? sortedCategories[0][1] : 1;
+
+  // 5. Filtrar por Tab de Cobranza
+  const currentTab = state.financesTab || 'all';
+  let tabOrders = timeFiltered;
+  if (currentTab === 'receivable') {
+    tabOrders = timeFiltered.filter(o => o._fin.saldo > 0);
+  } else if (currentTab === 'paid') {
+    tabOrders = timeFiltered.filter(o => o._fin.status === 'paid');
+  } else if (currentTab === 'unquoted') {
+    tabOrders = timeFiltered.filter(o => o._fin.status === 'unquoted');
+  }
+
+  // 6. Filtrar por Buscador Reactivo
+  const searchQuery = String(state.financesSearch || "").toLowerCase().trim();
+  const displayedOrders = searchQuery ? tabOrders.filter(o => {
+    const id = String(o.id || "").toLowerCase();
+    const cli = String(o.cliente || "").toLowerCase();
+    const tel = String(o.telefono || "").toLowerCase();
+    const tip = String(o.tipo || "").toLowerCase();
+    return id.includes(searchQuery) || cli.includes(searchQuery) || tel.includes(searchQuery) || tip.includes(searchQuery);
+  }) : tabOrders;
+
+  // Conteo para pestañas
+  const countAll = timeFiltered.length;
+  const countReceivable = timeFiltered.filter(o => o._fin.saldo > 0).length;
+  const countPaid = timeFiltered.filter(o => o._fin.status === 'paid').length;
+  const countUnquoted = timeFiltered.filter(o => o._fin.status === 'unquoted').length;
 
   return `
-    <div style="background:var(--bg-card); padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md);">
-      <div style="margin-bottom:16px;">
-        <h2 style="margin:0;">💵 Control Financiero y Registro de Ingresos</h2>
-        <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">Panel confidencial de Jefatura para auditar montos cobrados y rendimiento económico.</p>
+    <div style="background:var(--bg-card); padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md); animation:sicsFadeIn 0.3s ease-out;">
+      
+      <!-- Encabezado & Selector de Período -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+        <div>
+          <h2 style="margin:0; font-size:22px; display:flex; align-items:center; gap:8px;">
+            💵 Control Financiero, Flujo de Caja & Cuentas por Cobrar
+          </h2>
+          <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+            Módulo de alta dirección para auditar facturación, saldo en calle, cobranzas efectivas y notas de entrega.
+          </p>
+        </div>
+
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('today')" style="font-size:11.5px; padding:5px 10px; border-radius:8px; ${currentTf === 'today' ? 'background:#059669; color:white; font-weight:bold;' : ''}">Hoy</button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('week')" style="font-size:11.5px; padding:5px 10px; border-radius:8px; ${currentTf === 'week' ? 'background:#0284c7; color:white; font-weight:bold;' : ''}">Esta Semana</button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('month')" style="font-size:11.5px; padding:5px 10px; border-radius:8px; ${currentTf === 'month' ? 'background:#9333ea; color:white; font-weight:bold;' : ''}">Este Mes</button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('all')" style="font-size:11.5px; padding:5px 10px; border-radius:8px; ${currentTf === 'all' ? 'background:#d97706; color:white; font-weight:bold;' : ''}">Histórico Completo</button>
+          <button type="button" class="secondary-button" onclick="window.toggleFinancesCharts()" style="font-size:11.5px; padding:5px 12px; border-radius:8px; background:rgba(99,102,241,0.15); color:#6366f1; border:1px solid rgba(99,102,241,0.3); font-weight:bold; cursor:pointer;">
+            ${showCharts ? '📉 Ocultar Gráficos' : '📊 Ver Gráficos'}
+          </button>
+        </div>
       </div>
 
+      <!-- Tarjetas de 6 KPIs Financieros Ejecutivos -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;">
-        <div style="background:rgba(16,185,129,.1); border:1px solid #059669; padding:16px; border-radius:10px; text-align:center;">
-          <span style="font-size:12px; color:#059669; font-weight:800;">INGRESOS HOY</span>
-          <h2 style="color:#059669; margin:6px 0 0 0;">$${revToday.toFixed(2)}</h2>
-          <small style="color:var(--text-muted);">${todayOrders.length} trabajos</small>
+        <div style="background:rgba(2,132,199,.08); border:1.5px solid #0284c7; padding:14px; border-radius:10px; text-align:center;">
+          <span style="font-size:11px; color:#0284c7; font-weight:800; text-transform:uppercase;">TOTAL FACTURADO</span>
+          <h2 style="color:#0284c7; margin:4px 0 0 0; font-size:22px;">$${totalBilled.toFixed(2)}</h2>
+          <small style="color:var(--text-muted); font-size:11px;">${quotedCount} cotizados (${countAll} pedidos)</small>
         </div>
-        <div style="background:rgba(2,132,199,.1); border:1px solid #0284c7; padding:16px; border-radius:10px; text-align:center;">
-          <span style="font-size:12px; color:#0284c7; font-weight:800;">ESTA SEMANA</span>
-          <h2 style="color:#0284c7; margin:6px 0 0 0;">$${revWeek.toFixed(2)}</h2>
-          <small style="color:var(--text-muted);">${weekOrders.length} trabajos</small>
+
+        <div style="background:rgba(16,185,129,.08); border:1.5px solid #059669; padding:14px; border-radius:10px; text-align:center;">
+          <span style="font-size:11px; color:#059669; font-weight:800; text-transform:uppercase;">COBRADO REAL (CAJA)</span>
+          <h2 style="color:#059669; margin:4px 0 0 0; font-size:22px;">$${totalCollected.toFixed(2)}</h2>
+          <small style="color:#059669; font-size:11px; font-weight:bold;">Tasa Cobro: ${collectionRate.toFixed(1)}%</small>
         </div>
-        <div style="background:rgba(147,51,234,.1); border:1px solid #9333ea; padding:16px; border-radius:10px; text-align:center;">
-          <span style="font-size:12px; color:#9333ea; font-weight:800;">ESTE MES</span>
-          <h2 style="color:#9333ea; margin:6px 0 0 0;">$${revMonth.toFixed(2)}</h2>
-          <small style="color:var(--text-muted);">${monthOrders.length} trabajos</small>
+
+        <div style="background:rgba(239,68,68,.08); border:1.5px solid #ef4444; padding:14px; border-radius:10px; text-align:center;">
+          <span style="font-size:11px; color:#ef4444; font-weight:800; text-transform:uppercase;">SALDO EN CALLE (CxC)</span>
+          <h2 style="color:#ef4444; margin:4px 0 0 0; font-size:22px;">$${totalReceivable.toFixed(2)}</h2>
+          <small style="color:#ef4444; font-size:11px; font-weight:bold;">${countReceivable} órdenes por liquidar</small>
         </div>
-        <div style="background:rgba(217,119,6,.1); border:1px solid #d97706; padding:16px; border-radius:10px; text-align:center;">
-          <span style="font-size:12px; color:#d97706; font-weight:800;">HISTÓRICO COMPLETO</span>
-          <h2 style="color:#d97706; margin:6px 0 0 0;">$${revAll.toFixed(2)}</h2>
-          <small style="color:var(--text-muted);">${paidOrders.length} con cobro / ${finished.length} total</small>
+
+        <div style="background:rgba(245,158,11,.08); border:1.5px solid #f59e0b; padding:14px; border-radius:10px; text-align:center;">
+          <span style="font-size:11px; color:#d97706; font-weight:800; text-transform:uppercase;">GASTOS PROVEEDORES</span>
+          <h2 style="color:#d97706; margin:4px 0 0 0; font-size:22px;">$${totalExpensesBilled.toFixed(2)}</h2>
+          <small style="color:var(--text-muted); font-size:11px;">Pagado: $${totalExpensesPaid.toFixed(2)} | Deuda: $${totalExpensesPending.toFixed(2)}</small>
+        </div>
+
+        <div style="background:${netCashFlow >= 0 ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'}; border:1.5px solid ${netCashFlow >= 0 ? '#10b981' : '#ef4444'}; padding:14px; border-radius:10px; text-align:center;">
+          <span style="font-size:11px; color:${netCashFlow >= 0 ? '#10b981' : '#ef4444'}; font-weight:800; text-transform:uppercase;">CAJA OPERATIVA NETA</span>
+          <h2 style="color:${netCashFlow >= 0 ? '#10b981' : '#ef4444'}; margin:4px 0 0 0; font-size:22px;">
+            ${netCashFlow >= 0 ? '+' : ''}$${netCashFlow.toFixed(2)}
+          </h2>
+          <small style="color:${netCashFlow >= 0 ? '#10b981' : '#ef4444'}; font-size:11px; font-weight:bold;">
+            ${netCashFlow >= 0 ? '🟢 Superávit Real en Caja' : '🔴 Déficit Temporal (CxC)'}
+          </small>
+        </div>
+
+        <div style="background:rgba(147,51,234,.08); border:1.5px solid #9333ea; padding:14px; border-radius:10px; text-align:center;">
+          <span style="font-size:11px; color:#9333ea; font-weight:800; text-transform:uppercase;">TICKET / MARGEN</span>
+          <h2 style="color:#9333ea; margin:4px 0 0 0; font-size:22px;">$${avgTicket.toFixed(2)}</h2>
+          <small style="color:#9333ea; font-size:11px; font-weight:bold;">Margen Proyectado: ${profitMargin}%</small>
         </div>
       </div>
 
-      <h3 style="font-size:15px; margin-bottom:12px;">DESGLOSE DE PROYECTOS (${finished.length} finalizados · ${paidOrders.length} con cobro registrado)</h3>
+      <!-- APARTADO DE GRÁFICOS ESTÉTICOS E INTELIGENCIA FINANCIERA (FASE 3) -->
+      ${showCharts ? `
+        <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:14px; padding:18px; margin-bottom:22px; box-shadow:inset 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">📊</span>
+              <div>
+                <strong style="font-size:14px; color:var(--text-main);">Inteligencia Financiera &amp; Comparativas Visuales</strong>
+                <div style="font-size:11.5px; color:var(--text-muted);">Análisis gráfico de ingresos contra compras, liquidez de fondos y líneas de producción.</div>
+              </div>
+            </div>
+            <span style="font-size:11px; padding:3px 8px; border-radius:6px; background:rgba(14,165,233,0.15); color:#0284c7; font-weight:bold;">
+              Filtro: ${currentTf.toUpperCase()}
+            </span>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+            
+            <!-- GRÁFICO 1: COMPARATIVA INGRESOS VS GASTOS VS REMANENTE -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+              <div style="font-size:12px; font-weight:bold; color:var(--text-main); margin-bottom:12px; display:flex; justify-content:space-between;">
+                <span>💵 Ingresos Cobrados vs Gastos en Insumos</span>
+                <span style="color:#10b981; font-weight:800;">${collectionRate.toFixed(0)}% Cobrado</span>
+              </div>
+
+              <!-- Barra 1: Cobrado en Caja -->
+              <div style="margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-bottom:3px;">
+                  <span style="color:#059669; font-weight:600;"><i class="fas fa-arrow-down"></i> Ingresos Cobrados (Caja)</span>
+                  <strong style="color:#059669;">$${totalCollected.toFixed(2)}</strong>
+                </div>
+                <div style="width:100%; height:10px; background:rgba(0,0,0,0.12); border-radius:6px; overflow:hidden;">
+                  <div style="width:${wCollected}%; height:100%; background:linear-gradient(90deg, #10b981, #059669); border-radius:6px; transition:width 0.4s ease;"></div>
+                </div>
+              </div>
+
+              <!-- Barra 2: Gastos Pagados a Proveedores -->
+              <div style="margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-bottom:3px;">
+                  <span style="color:#ef4444; font-weight:600;"><i class="fas fa-arrow-up"></i> Gastos Pagados (Proveedores)</span>
+                  <strong style="color:#ef4444;">$${totalExpensesPaid.toFixed(2)}</strong>
+                </div>
+                <div style="width:100%; height:10px; background:rgba(0,0,0,0.12); border-radius:6px; overflow:hidden;">
+                  <div style="width:${wExpenses}%; height:100%; background:linear-gradient(90deg, #f87171, #ef4444); border-radius:6px; transition:width 0.4s ease;"></div>
+                </div>
+              </div>
+
+              <!-- Barra 3: Remanente Operativo Libre -->
+              <div style="margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-bottom:3px;">
+                  <span style="color:#0284c7; font-weight:600;"><i class="fas fa-wallet"></i> Margen Neto Libre en Caja</span>
+                  <strong style="color:${netCashFlow >= 0 ? '#0284c7' : '#ef4444'};">${netCashFlow >= 0 ? '+' : ''}$${netCashFlow.toFixed(2)}</strong>
+                </div>
+                <div style="width:100%; height:10px; background:rgba(0,0,0,0.12); border-radius:6px; overflow:hidden;">
+                  <div style="width:${wNet}%; height:100%; background:linear-gradient(90deg, #38bdf8, #0284c7); border-radius:6px; transition:width 0.4s ease;"></div>
+                </div>
+              </div>
+
+              <!-- Dictamen Diagnóstico de Gerencia -->
+              <div style="background:${netCashFlow >= 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; border:1px solid ${netCashFlow >= 0 ? '#10b981' : '#ef4444'}; border-radius:8px; padding:8px 10px; font-size:11px; line-height:1.4;">
+                ${netCashFlow >= 0 ? `
+                  <strong style="color:#10b981;">✅ Flujo Positivo Saludable:</strong> Las entradas efectivas cubren el 100% de los insumos pagados en este período, dejando un excedente libre de <strong>+$${netCashFlow.toFixed(2)}</strong>.
+                ` : `
+                  <strong style="color:#ef4444;">⚠️ Déficit Temporal:</strong> Los desembolsos de insumos superan lo cobrado hasta ahora en <strong>-$${Math.abs(netCashFlow).toFixed(2)}</strong>. Liquidar los <strong>$${totalReceivable.toFixed(2)}</strong> en calle restaurará el superávit.
+                `}
+              </div>
+            </div>
+
+            <!-- GRÁFICO 2: DONUT CHART SVG VECTORIAL DE LIQUIDEZ -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px; display:flex; flex-direction:column; justify-content:space-between;">
+              <div style="font-size:12px; font-weight:bold; color:var(--text-main); margin-bottom:10px;">
+                🎯 Composición de Fondos &amp; Liquidez Total
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content:space-around; gap:12px; flex-wrap:wrap;">
+                <!-- Vector SVG Donut -->
+                <div style="position:relative; width:130px; height:130px; display:flex; align-items:center; justify-content:center;">
+                  <svg width="130" height="130" viewBox="0 0 160 160" style="transform:rotate(-90deg);">
+                    <!-- Anillo base de fondo -->
+                    <circle cx="80" cy="80" r="60" fill="transparent" stroke="rgba(0,0,0,0.08)" stroke-width="20"></circle>
+                    <!-- Segmento 1: Cobrado (Verde) -->
+                    <circle cx="80" cy="80" r="60" fill="transparent" stroke="#10b981" stroke-width="20" stroke-dasharray="${arc1Len.toFixed(1)} 377" stroke-dashoffset="0"></circle>
+                    <!-- Segmento 2: Por Cobrar (Rojo) -->
+                    <circle cx="80" cy="80" r="60" fill="transparent" stroke="#ef4444" stroke-width="20" stroke-dasharray="${arc2Len.toFixed(1)} 377" stroke-dashoffset="${(-arc1Len).toFixed(1)}"></circle>
+                    <!-- Segmento 3: Deuda Proveedores (Ámbar) -->
+                    <circle cx="80" cy="80" r="60" fill="transparent" stroke="#f59e0b" stroke-width="20" stroke-dasharray="${arc3Len.toFixed(1)} 377" stroke-dashoffset="${(-(arc1Len + arc2Len)).toFixed(1)}"></circle>
+                  </svg>
+                  <div style="position:absolute; text-align:center;">
+                    <div style="font-size:18px; font-weight:900; color:var(--text-main); line-height:1;">${collectionRate.toFixed(0)}%</div>
+                    <div style="font-size:9px; color:var(--text-muted); font-weight:bold; text-transform:uppercase;">Recaudado</div>
+                  </div>
+                </div>
+
+                <!-- Leyenda de Fondos -->
+                <div style="font-size:11.5px; display:flex; flex-direction:column; gap:6px;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#10b981;"></span>
+                    <span style="color:var(--text-muted);">En Caja:</span>
+                    <strong style="color:#10b981;">$${totalCollected.toFixed(2)}</strong>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#ef4444;"></span>
+                    <span style="color:var(--text-muted);">En Calle (CxC):</span>
+                    <strong style="color:#ef4444;">$${totalReceivable.toFixed(2)}</strong>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f59e0b;"></span>
+                    <span style="color:var(--text-muted);">Por Pagar (CxP):</span>
+                    <strong style="color:#d97706;">$${totalExpensesPending.toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:10px; font-size:11px; text-align:center; color:var(--text-muted);">
+                Volumen Total Movilizado: <strong>$${(totalBilled + totalExpensesBilled).toFixed(2)}</strong>
+              </div>
+            </div>
+
+            <!-- GRÁFICO 3: DISTRIBUCIÓN DE COMPRAS POR PROVEEDOR -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+              <div style="font-size:12px; font-weight:bold; color:var(--text-main); margin-bottom:10px; display:flex; justify-content:space-between;">
+                <span>📦 Compras e Insumos por Proveedor</span>
+                <span style="color:#f59e0b; font-weight:800;">Total: $${totalExpensesBilled.toFixed(2)}</span>
+              </div>
+
+              ${sortedProviders.length ? sortedProviders.map(([prov, amt]) => {
+                const pct = Math.round((amt / maxProvVal) * 100);
+                const share = totalExpensesBilled > 0 ? Math.round((amt / totalExpensesBilled) * 100) : 0;
+                return `
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+                      <span style="color:var(--text-main); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">${escapeHtml(prov)}</span>
+                      <span><strong style="color:var(--text-main);">$${amt.toFixed(2)}</strong> <small style="color:var(--text-muted);">(${share}%)</small></span>
+                    </div>
+                    <div style="width:100%; height:8px; background:rgba(0,0,0,0.1); border-radius:4px; overflow:hidden;">
+                      <div style="width:${pct}%; height:100%; background:linear-gradient(90deg, #f59e0b, #d97706); border-radius:4px;"></div>
+                    </div>
+                  </div>
+                `;
+              }).join('') : `
+                <div style="padding:20px; text-align:center; color:var(--text-muted); font-size:11.5px;">
+                  No hay facturas o compras registradas para este período.
+                </div>
+              `}
+            </div>
+
+            <!-- GRÁFICO 4: GENERACIÓN DE INGRESOS POR LÍNEA DE PRODUCTO -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+              <div style="font-size:12px; font-weight:bold; color:var(--text-main); margin-bottom:10px; display:flex; justify-content:space-between;">
+                <span>🎨 Facturación por Departamento / Línea</span>
+                <span style="color:#8b5cf6; font-weight:800;">Total: $${totalBilled.toFixed(2)}</span>
+              </div>
+
+              ${sortedCategories.map(([cat, amt]) => {
+                const pct = totalBilled > 0 ? Math.round((amt / totalBilled) * 100) : 0;
+                const barWidth = Math.round((amt / maxCatVal) * 100);
+                return `
+                  <div style="margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+                      <span style="color:var(--text-main); font-weight:600;">${escapeHtml(cat)}</span>
+                      <span><strong style="color:var(--text-main);">$${amt.toFixed(2)}</strong> <small style="color:#8b5cf6; font-weight:bold;">(${pct}%)</small></span>
+                    </div>
+                    <div style="width:100%; height:8px; background:rgba(0,0,0,0.1); border-radius:4px; overflow:hidden;">
+                      <div style="width:${barWidth}%; height:100%; background:linear-gradient(90deg, #a78bfa, #8b5cf6); border-radius:4px;"></div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Barra de Filtros por Estatus & Buscador -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; background:var(--bg-main); padding:10px 14px; border-radius:10px; border:1px solid var(--border-color);">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="secondary-button" onclick="window.setFinancesTab('all')" style="font-size:11.5px; padding:6px 12px; border-radius:20px; ${currentTab === 'all' ? 'background:#3b82f6; color:white; font-weight:bold;' : ''}">
+            🌐 Todos (${countAll})
+          </button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTab('receivable')" style="font-size:11.5px; padding:6px 12px; border-radius:20px; ${currentTab === 'receivable' ? 'background:#ef4444; color:white; font-weight:bold;' : ''}">
+            🔴 Cuentas por Cobrar (${countReceivable})
+          </button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTab('paid')" style="font-size:11.5px; padding:6px 12px; border-radius:20px; ${currentTab === 'paid' ? 'background:#10b981; color:white; font-weight:bold;' : ''}">
+            🟢 100% Solventes (${countPaid})
+          </button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTab('unquoted')" style="font-size:11.5px; padding:6px 12px; border-radius:20px; ${currentTab === 'unquoted' ? 'background:#6b7280; color:white; font-weight:bold;' : ''}">
+            ⚪ Sin Cotizar (${countUnquoted})
+          </button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px;">
+          <i class="fas fa-search" style="color:var(--text-muted); font-size:12px;"></i>
+          <input type="text" placeholder="Buscar cliente, ID o teléfono..." value="${escapeHtml(state.financesSearch || '')}" oninput="window.setFinancesSearch(this.value)" style="padding:5px 10px; border-radius:6px; border:1px solid var(--border-color); font-size:12px; width:220px;">
+        </div>
+      </div>
+
+      <!-- Tabla Enriquecida de Finanzas & Cobranza -->
       <div style="overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
+        <table style="width:100%; border-collapse:collapse; font-size:12.5px; text-align:left;">
           <thead>
-            <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted);">
-              <th style="padding:8px;">ID</th>
-              <th style="padding:8px;">Cliente</th>
-              <th style="padding:8px;">Tipo</th>
-              <th style="padding:8px;">Motivo</th>
-              <th style="padding:8px;">Responsable</th>
-              <th style="padding:8px;">Duración</th>
-              <th style="padding:8px;">Monto Cobrado ($)</th>
+            <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:11.5px; text-transform:uppercase;">
+              <th style="padding:10px 8px;">ID</th>
+              <th style="padding:10px 8px;">Cliente & Contacto</th>
+              <th style="padding:10px 8px;">Trabajo / Motivo</th>
+              <th style="padding:10px 8px;">Estado</th>
+              <th style="padding:10px 8px; text-align:right;">Total ($)</th>
+              <th style="padding:10px 8px; text-align:right;">Abonado ($)</th>
+              <th style="padding:10px 8px; text-align:right;">Saldo ($)</th>
+              <th style="padding:10px 8px; text-align:center;">Estatus Pago</th>
+              <th style="padding:10px 8px; text-align:center;">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            ${finished.map(o => `
-              <tr style="border-bottom:1px solid var(--border-color); cursor:pointer;" data-action="detail" data-id="${escapeHtml(o.id)}" data-scope="finished">
-                <td style="padding:8px; font-weight:bold;">${escapeHtml(o.id)}</td>
-                <td style="padding:8px;">${escapeHtml(o.cliente)}</td>
-                <td style="padding:8px;">${escapeHtml(o.tipo)}</td>
-                <td style="padding:8px;">${escapeHtml(o.motivo || '-')}</td>
-                <td style="padding:8px;">${escapeHtml(o.responsable)}</td>
-                <td style="padding:8px;">${o.duracionRealMin || 0} min</td>
-                <td style="padding:8px; font-weight:bold; color:${Number(o.costo || 0) > 0 ? '#059669' : 'var(--text-muted)'};">
-                  ${Number(o.costo || 0) > 0 ? '$' + Number(o.costo).toFixed(2) : '<span style="font-size:11px; opacity:0.65; font-style:italic;">Pendiente</span>'}
-                </td>
-              </tr>
-            `).join('') || '<tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted);">No hay trabajos finalizados.</td></tr>'}
+            ${displayedOrders.map(o => {
+              const f = o._fin || getOrderFinances(o);
+              const rawTel = String(o.telefono || "").replace(/[^0-9]/g, "");
+              const waTel = rawTel.startsWith("0") ? "58" + rawTel.substring(1) : (rawTel.length === 10 ? "58" + rawTel : rawTel);
+              return `
+                <tr style="border-bottom:1px solid var(--border-color);">
+                  <td style="padding:10px 8px; font-weight:bold; font-family:monospace; color:var(--primary-color); cursor:pointer;" onclick="openOrderDetail('${escapeHtml(o.id)}')">
+                    ${escapeHtml(o.id)}
+                  </td>
+                  <td style="padding:10px 8px;">
+                    <div style="font-weight:700; color:var(--text-main);">${escapeHtml(o.cliente)}</div>
+                    ${waTel ? `
+                      <a href="https://wa.me/${waTel}" target="_blank" rel="noopener" style="font-size:11px; color:#059669; text-decoration:none; display:inline-flex; align-items:center; gap:3px;">
+                        📲 ${escapeHtml(o.telefono)}
+                      </a>
+                    ` : '<span style="font-size:11px; color:var(--text-muted);">Sin teléfono</span>'}
+                  </td>
+                  <td style="padding:10px 8px;">
+                    <div style="font-weight:600;">${escapeHtml(o.tipo)}</div>
+                    <small style="color:var(--text-muted);">${escapeHtml(o.motivo || '-')}</small>
+                  </td>
+                  <td style="padding:10px 8px;">
+                    <span style="font-size:10.5px; font-weight:bold; padding:2px 8px; border-radius:10px; background:${o.estado === 'Entregado' || o.estado === 'Terminado' ? 'rgba(16,185,129,0.15); color:#10b981;' : 'rgba(2,132,199,0.15); color:#0284c7;'}">
+                      ${escapeHtml(o.estado || 'Activo')}
+                    </span>
+                  </td>
+                  <td style="padding:10px 8px; text-align:right; font-weight:700;">
+                    ${f.total > 0 ? '$' + f.total.toFixed(2) : '<span style="color:var(--text-muted); font-size:11px; font-style:italic;">Sin precio</span>'}
+                  </td>
+                  <td style="padding:10px 8px; text-align:right; font-weight:700; color:#059669;">
+                    $${f.abono.toFixed(2)}
+                  </td>
+                  <td style="padding:10px 8px; text-align:right; font-weight:900; color:${f.saldo > 0 ? '#ef4444' : '#10b981'};">
+                    $${f.saldo.toFixed(2)}
+                  </td>
+                  <td style="padding:10px 8px; text-align:center;">
+                    <span style="font-size:10.5px; font-weight:800; padding:3px 8px; border-radius:10px; ${
+                      f.status === 'paid' ? 'background:rgba(16,185,129,0.2); color:#10b981;' :
+                      f.status === 'partial' ? 'background:rgba(245,158,11,0.2); color:#d97706;' :
+                      f.status === 'pending' ? 'background:rgba(239,68,68,0.2); color:#ef4444;' :
+                      'background:rgba(107,114,128,0.2); color:#6b7280;'
+                    }">
+                      ${f.status === 'paid' ? '🟢 Solvente' :
+                        f.status === 'partial' ? '🟡 Con Saldo' :
+                        f.status === 'pending' ? '🔴 Por Cobrar' : '⚪ Sin Cotizar'}
+                    </span>
+                  </td>
+                  <td style="padding:10px 8px; text-align:center;">
+                    <div style="display:flex; gap:4px; justify-content:center;">
+                      <button type="button" class="secondary-button" onclick="window.openQuickPaymentEdit('${escapeHtml(o.id)}')" style="padding:4px 8px; font-size:11px; background:#059669; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;" title="Registrar Cobro / Modificar Montos">
+                        💵 Cobrar
+                      </button>
+                      <button type="button" class="secondary-button" onclick="window.generateDeliveryNote('${escapeHtml(o.id)}')" style="padding:4px 8px; font-size:11px; background:#4f46e5; color:white; border:none; border-radius:6px; cursor:pointer;" title="Nota de Entrega Formal">
+                        📄 Nota
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('') || `<tr><td colspan="9" style="padding:24px; text-align:center; color:var(--text-muted);">No se encontraron pedidos para el filtro actual.</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
   `;
 }
+
+window.toggleFinancesCharts = function() { state.financesShowCharts = state.financesShowCharts === false ? true : false; render(); };
+window.setFinancesTimeframe = function(tf) { state.financesTimeframe = tf; render(); };
+window.setFinancesTab = function(tab) { state.financesTab = tab; render(); };
+window.setFinancesSearch = function(query) { state.financesSearch = query; render(); };
 window.setPerfTimeframe = function(tf) { state.perfTimeframe = tf; render(); };
 
 function exportPerformancePDF(tf) {
@@ -3741,6 +4266,76 @@ function closeModal() {
   if (m) m.close();
 }
 
+function getOrderFinances(order) {
+  if (!order) return { total: 0, abono: 0, saldo: 0, metodo: "No especificado", status: "unquoted" };
+  
+  const total = Number(order.costo || 0);
+  let abono = 0;
+  let metodo = "";
+  
+  // 1. Atributos directos
+  if (order.abono !== undefined && order.abono !== null && !isNaN(Number(order.abono))) {
+    abono = Number(order.abono);
+  } else if (order.anticipo !== undefined && order.anticipo !== null && !isNaN(Number(order.anticipo))) {
+    abono = Number(order.anticipo);
+  }
+  
+  if (order.metodoPago || order.metodo_pago) {
+    metodo = String(order.metodoPago || order.metodo_pago).trim();
+  }
+
+  // 2. Extraer de notas si no están en propiedades
+  if (order.notas) {
+    const finTag = order.notas.match(/\[FINANZAS:[^\]]+\]/i);
+    if (finTag) {
+      const tagContent = finTag[0];
+      const abonoMatch = tagContent.match(/abono=([0-9.]+)/i);
+      if (abonoMatch && (!abono || abono === 0)) {
+        abono = parseFloat(abonoMatch[1]) || 0;
+      }
+      const metodoMatch = tagContent.match(/metodo=([^|\]]+)/i);
+      if (metodoMatch && !metodo) {
+        metodo = metodoMatch[1].trim();
+      }
+    } else {
+      if (!abono) {
+        const plainAbono = order.notas.match(/(?:Anticipo|Abono|Abonó):\s*\$?([0-9.]+)/i);
+        if (plainAbono) abono = parseFloat(plainAbono[1]) || 0;
+      }
+      if (!metodo) {
+        const plainMet = order.notas.match(/(?:Método|Metodo|Forma de pago):\s*([^\n\r,|]+)/i);
+        if (plainMet) metodo = plainMet[1].trim();
+      }
+    }
+  }
+
+  let saldo = Math.max(0, total - abono);
+  let status = "unquoted";
+
+  if (total <= 0) {
+    status = "unquoted"; // Sin cotizar
+  } else if (saldo === 0 || /\[PAGADO\]|\[SOLVENTE\]|100%\s*PAGADO|PAGO\s*COMPLETO/i.test(order.notas || "")) {
+    status = "paid"; // Solvente / 100% Pagado
+    saldo = 0;
+    if (abono === 0) abono = total;
+  } else if (abono > 0 && saldo > 0) {
+    status = "partial"; // Abonado parcial / Saldo pendiente
+  } else {
+    // Total > 0 y abono 0
+    status = "pending"; // Totalmente por cobrar
+    saldo = total;
+  }
+
+  return {
+    total: Math.round(total * 100) / 100,
+    abono: Math.round(abono * 100) / 100,
+    saldo: Math.round(saldo * 100) / 100,
+    metodo: metodo || "Pendiente",
+    status
+  };
+}
+window.getOrderFinances = getOrderFinances;
+
 function detail(order) {
   state.selectedOrder = order;
   const rawPhone = cleanPhoneNumber(order.telefono);
@@ -3865,6 +4460,8 @@ function detail(order) {
       </div>
     `;
   }
+
+  const fin = getOrderFinances(order);
 
   openModal(`
     <div class="modal-head"><div><p class="eyebrow">${escapeHtml(order.id)}</p><h2>${escapeHtml(order.cliente)}</h2></div><button class="close-button" data-action="close">×</button></div>
@@ -3991,14 +4588,59 @@ function detail(order) {
       </div>
 
       ${isLead() ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px dashed var(--border-color); padding-bottom:6px; background:rgba(16,185,129,.1); padding:8px; border-radius:6px;">
-          <span style="font-weight:700; color:#059669; font-size:12px;">💵 PRECIO / COSTO COBRADO ($):</span>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <input type="number" step="0.01" id="order-cost-input" value="${order.costo || 0}" style="width:90px; padding:4px 8px; border-radius:6px; border:1px solid #059669; font-weight:bold;">
-            <button type="button" class="primary-button" id="save-cost-btn" onclick="saveOrderCost('${escapeHtml(order.id)}')" data-action="save-cost" data-id="${escapeHtml(order.id)}" style="padding:4px 8px; font-size:11px; background:#059669;">💾 Guardar $</button>
+        <div style="background:rgba(16,185,129,.08); border:1.5px solid #10b981; border-radius:10px; padding:12px; margin:8px 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+            <span style="font-weight:800; color:#059669; font-size:12.5px; display:flex; align-items:center; gap:6px;">
+              💵 CONTROL FINANCIERO & COBRANZA
+            </span>
+            <span style="font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px; ${
+              fin.status === 'paid' ? 'background:#10b981; color:white;' :
+              fin.status === 'partial' ? 'background:#f59e0b; color:white;' :
+              fin.status === 'pending' ? 'background:#ef4444; color:white;' :
+              'background:#6b7280; color:white;'
+            }">
+              ${fin.status === 'paid' ? '🟢 Solvente (100% Pagado)' :
+                fin.status === 'partial' ? '🟡 Saldo Pendiente: $' + fin.saldo.toFixed(2) :
+                fin.status === 'pending' ? '🔴 Por Cobrar: $' + fin.saldo.toFixed(2) :
+                '⚪ Sin Cotizar'}
+            </span>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; background:var(--bg-card); padding:8px; border-radius:8px; border:1px solid var(--border-color); text-align:center; margin-bottom:10px;">
+            <div>
+              <div style="font-size:10.5px; color:var(--text-muted); font-weight:700;">PRECIO TOTAL</div>
+              <div style="font-size:15px; font-weight:900; color:var(--text-main);">$${fin.total.toFixed(2)}</div>
+            </div>
+            <div>
+              <div style="font-size:10.5px; color:#059669; font-weight:700;">ABONO / ANTICIPO</div>
+              <div style="font-size:15px; font-weight:900; color:#059669;">$${fin.abono.toFixed(2)}</div>
+            </div>
+            <div>
+              <div style="font-size:10.5px; color:${fin.saldo > 0 ? '#ef4444' : '#10b981'}; font-weight:700;">SALDO PENDIENTE</div>
+              <div style="font-size:15px; font-weight:900; color:${fin.saldo > 0 ? '#ef4444' : '#10b981'};">$${fin.saldo.toFixed(2)}</div>
+            </div>
+          </div>
+
+          <div style="font-size:11.5px; color:var(--text-muted); margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Método registrado: <strong>${escapeHtml(fin.metodo)}</strong></span>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="primary-button" onclick="window.openQuickPaymentEdit('${escapeHtml(order.id)}')" style="flex:1; padding:7px 10px; font-size:11.5px; background:#059669; min-width:140px;">
+              💵 Cobrar / Editar $
+            </button>
+            <button type="button" class="secondary-button" onclick="window.generateDeliveryNote('${escapeHtml(order.id)}')" style="flex:1; padding:7px 10px; font-size:11.5px; background:#4f46e5; color:white; border:none; min-width:140px;">
+              📄 Nota de Entrega Formal
+            </button>
           </div>
         </div>
-      ` : ''}
+      ` : `
+        <div style="margin:8px 0;">
+          <button type="button" class="secondary-button" onclick="window.generateDeliveryNote('${escapeHtml(order.id)}')" style="width:100%; padding:8px 12px; font-size:12px; background:#4f46e5; color:white; border:none; border-radius:8px; font-weight:bold;">
+            📄 Ver / Imprimir Nota de Entrega Formal
+          </button>
+        </div>
+      `}
       
       <div style="display:flex; flex-direction:column; gap:4px; border-bottom:1px dashed var(--border-color); padding-bottom:6px;">
         <span style="font-weight:700; color:var(--text-muted); font-size:12px;">DESCRIPCIÓN / MEDIDAS:</span>
@@ -4149,6 +4791,551 @@ window.saveOrderCost = async function(orderId) {
     }
     alert(`Error al guardar costo: ${err.message}`);
   }
+};
+
+window.saveOrderPayment = async function(orderId, total, abono, metodo, refNote) {
+  total = parseFloat(total) || 0;
+  abono = parseFloat(abono) || 0;
+  metodo = String(metodo || "Pendiente").trim();
+  refNote = String(refNote || "").trim();
+
+  const saldo = Math.max(0, total - abono);
+
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) {
+    alert("No se encontró el pedido en el sistema.");
+    return;
+  }
+
+  const finTag = `[FINANZAS: total=${total.toFixed(2)} | abono=${abono.toFixed(2)} | saldo=${saldo.toFixed(2)} | metodo=${metodo}${refNote ? ' | ref=' + refNote : ''}]`;
+  
+  let currentNotas = String(order.notas || "");
+  let newNotas = "";
+  if (currentNotas.includes("[FINANZAS:")) {
+    newNotas = currentNotas.replace(/\[FINANZAS:[^\]]+\]/i, finTag);
+  } else {
+    newNotas = finTag + (currentNotas ? "\n" + currentNotas : "");
+  }
+
+  try {
+    await api("profile_save_cost", { id: orderId, costo: total });
+    await api("profile_update_order", { id: orderId, changes: { notas: newNotas } });
+
+    allTarget.forEach(o => {
+      if (String(o.id).trim() === String(orderId).trim()) {
+        o.costo = total;
+        o.abono = abono;
+        o.metodoPago = metodo;
+        o.notas = newNotas;
+      }
+    });
+
+    showToast(`💵 Finanzas actualizadas: Total $${total.toFixed(2)} | Abono $${abono.toFixed(2)} | Saldo $${saldo.toFixed(2)}`);
+    closeModal();
+    await refresh(false);
+  } catch (err) {
+    alert(`Error al guardar datos de pago: ${err.message}`);
+  }
+};
+
+window.openQuickPaymentEdit = function(orderId) {
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) {
+    alert("No se encontró el pedido " + orderId);
+    return;
+  }
+  const fin = getOrderFinances(order);
+
+  openModal(`
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(order.id)}</p>
+        <h2 style="margin:0;">💵 Registro y Control de Cobranza</h2>
+      </div>
+      <button class="close-button" data-action="close">×</button>
+    </div>
+    
+    <div style="background:var(--bg-main); padding:12px; border-radius:8px; border:1px solid var(--border-color); margin-top:10px; margin-bottom:14px;">
+      <div style="font-size:13px; font-weight:bold; color:var(--text-main);">${escapeHtml(order.cliente)}</div>
+      <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">${escapeHtml(order.tipo)} ${order.motivo ? '· ' + escapeHtml(order.motivo) : ''}</div>
+    </div>
+
+    <form id="quick-payment-form" class="form-grid" style="gap:12px;">
+      <div class="form-inline" style="gap:10px;">
+        <label class="field" style="flex:1;">
+          <span class="field-label" style="font-size:11px;">PRECIO TOTAL ($ USD)</span>
+          <input type="number" step="0.01" min="0" id="qp-total-input" value="${fin.total || ''}" placeholder="0.00" required style="font-weight:bold; font-size:14px;">
+        </label>
+        <label class="field" style="flex:1;">
+          <span class="field-label" style="font-size:11px;">ANTICIPO / ABONO ($ USD)</span>
+          <input type="number" step="0.01" min="0" id="qp-abono-input" value="${fin.abono || ''}" placeholder="0.00" style="font-weight:bold; font-size:14px; color:#059669;">
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(16,185,129,0.08); padding:8px 12px; border-radius:8px; border:1px dashed #10b981;">
+        <span style="font-size:12px; font-weight:700; color:#059669;">SALDO PENDIENTE CALCULADO:</span>
+        <strong id="qp-calc-saldo" style="font-size:15px; color:${fin.saldo > 0 ? '#ef4444' : '#10b981'};">$${fin.saldo.toFixed(2)}</strong>
+      </div>
+
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button type="button" class="secondary-button" id="qp-mark-paid-btn" style="font-size:11px; padding:5px 10px; background:#10b981; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+          ✅ Marcar 100% Cancelado / Solvente
+        </button>
+        <button type="button" class="secondary-button" id="qp-mark-50-btn" style="font-size:11px; padding:5px 10px; background:#0ea5e9; color:white; border:none; border-radius:6px; cursor:pointer;">
+          50% de Anticipo
+        </button>
+      </div>
+
+      <label class="field">
+        <span class="field-label" style="font-size:11px;">FORMA / MÉTODO DE PAGO</span>
+        <select id="qp-metodo-select">
+          <option value="Pago Móvil" ${fin.metodo === 'Pago Móvil' ? 'selected' : ''}>Pago Móvil</option>
+          <option value="Efectivo USD" ${fin.metodo === 'Efectivo USD' ? 'selected' : ''}>Efectivo USD ($)</option>
+          <option value="Efectivo Bs" ${fin.metodo === 'Efectivo Bs' ? 'selected' : ''}>Efectivo Bolívares (Bs)</option>
+          <option value="Zelle" ${fin.metodo === 'Zelle' ? 'selected' : ''}>Zelle</option>
+          <option value="Punto de Venta" ${fin.metodo === 'Punto de Venta' ? 'selected' : ''}>Punto de Venta</option>
+          <option value="Transferencia" ${fin.metodo === 'Transferencia' ? 'selected' : ''}>Transferencia Bancaria</option>
+          <option value="Pendiente" ${(!fin.metodo || fin.metodo === 'Pendiente') ? 'selected' : ''}>Pendiente / Sin Definir</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="field-label" style="font-size:11px;">N° REFERENCIA / BANCO / OBSERVACIÓN</span>
+        <input type="text" id="qp-ref-input" placeholder="Ej: Ref 4821 Banesco / Pagó en efectivo mostrador">
+      </label>
+
+      <div class="modal-footer" style="margin-top:8px;">
+        <button type="button" class="secondary-button" data-action="close">Cancelar</button>
+        <button type="submit" class="primary-button" style="background:#059669;">💾 Guardar Finanzas</button>
+      </div>
+    </form>
+  `);
+
+  const tInput = document.getElementById("qp-total-input");
+  const aInput = document.getElementById("qp-abono-input");
+  const sLabel = document.getElementById("qp-calc-saldo");
+
+  const recalc = () => {
+    const tot = parseFloat(tInput?.value || 0) || 0;
+    const abo = parseFloat(aInput?.value || 0) || 0;
+    const sld = Math.max(0, tot - abo);
+    if (sLabel) {
+      sLabel.textContent = "$" + sld.toFixed(2);
+      sLabel.style.color = sld > 0 ? "#ef4444" : "#10b981";
+    }
+  };
+
+  tInput?.addEventListener("input", recalc);
+  aInput?.addEventListener("input", recalc);
+
+  document.getElementById("qp-mark-paid-btn")?.addEventListener("click", () => {
+    const tot = parseFloat(tInput?.value || 0) || 0;
+    if (tot > 0) {
+      if (aInput) aInput.value = tot.toFixed(2);
+      recalc();
+    } else {
+      alert("Ingresa primero el precio total.");
+    }
+  });
+
+  document.getElementById("qp-mark-50-btn")?.addEventListener("click", () => {
+    const tot = parseFloat(tInput?.value || 0) || 0;
+    if (tot > 0) {
+      if (aInput) aInput.value = (tot / 2).toFixed(2);
+      recalc();
+    } else {
+      alert("Ingresa primero el precio total.");
+    }
+  });
+
+  document.getElementById("quick-payment-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector(".primary-button");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "⏳ Guardando...";
+    }
+    const tot = parseFloat(tInput?.value || 0) || 0;
+    const abo = parseFloat(aInput?.value || 0) || 0;
+    const met = document.getElementById("qp-metodo-select")?.value || "";
+    const ref = document.getElementById("qp-ref-input")?.value || "";
+    await window.saveOrderPayment(orderId, tot, abo, met, ref);
+  });
+};
+
+window.generateDeliveryNote = function(orderId) {
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) {
+    alert("No se encontró el pedido " + orderId);
+    return;
+  }
+  const fin = getOrderFinances(order);
+
+  let subItemsList = [];
+  if (Array.isArray(order.subItems) && order.subItems.length) {
+    subItemsList = order.subItems;
+  } else if (typeof order.subItems === 'string') {
+    try { subItemsList = JSON.parse(order.subItems); } catch(e){}
+  }
+
+  openModal(`
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">COMPROBANTE OFICIAL</p>
+        <h2 style="margin:0;">📄 Nota de Entrega NE-${escapeHtml(order.id)}</h2>
+      </div>
+      <button class="close-button" data-action="close">×</button>
+    </div>
+
+    <!-- Vista previa de la Nota de Entrega Formal -->
+    <div style="background:#ffffff; color:#111827; padding:20px; border-radius:10px; border:2px solid #1e40af; margin-top:12px; margin-bottom:16px; font-family:'Segoe UI', Arial, sans-serif; max-height:480px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #1e40af; padding-bottom:12px; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2 style="margin:0; font-size:20px; color:#1e40af; font-weight:900; letter-spacing:0.5px;">CREACIONES JJ, C.A.</h2>
+          <div style="font-size:11px; color:#4b5563; font-weight:600; margin-top:2px;">Ochoa & Risquez · Diseño Gráfico, Papelería Creativa & DTF</div>
+          <div style="font-size:10px; color:#6b7280; margin-top:2px;">RIF: J-50129482-1 · Taller Principal</div>
+        </div>
+        <div style="background:#1e40af; color:white; padding:6px 14px; border-radius:6px; text-align:center;">
+          <div style="font-size:10px; font-weight:bold; text-transform:uppercase;">NOTA DE ENTREGA</div>
+          <div style="font-size:16px; font-weight:900; font-family:monospace; margin-top:2px;">NE-${escapeHtml(order.id)}</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; background:#f9fafb; padding:10px; border-radius:6px; border:1px solid #e5e7eb; font-size:12px; margin-bottom:14px;">
+        <div><strong style="color:#4b5563;">Cliente:</strong> <span style="font-weight:700; color:#111827;">${escapeHtml(order.cliente)}</span></div>
+        <div><strong style="color:#4b5563;">Fecha Emisión:</strong> <span style="font-weight:600;">${new Date().toLocaleDateString('es-VE')}</span></div>
+        <div><strong style="color:#4b5563;">Teléfono:</strong> <span style="font-weight:600;">${escapeHtml(order.telefono || 'No registrado')}</span></div>
+        <div><strong style="color:#4b5563;">Fecha Entrega:</strong> <span style="font-weight:600;">${escapeHtml(formatDate(order.entrega))}</span></div>
+        <div><strong style="color:#4b5563;">Atendido por:</strong> <span style="font-weight:600;">${escapeHtml(order.responsable || 'Taller')}</span></div>
+        <div><strong style="color:#4b5563;">Estatus Pedido:</strong> <span style="font-weight:700; color:#059669;">${escapeHtml(order.estado || 'Listo')}</span></div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <div style="font-size:11.5px; font-weight:800; color:#1e40af; text-transform:uppercase; margin-bottom:6px;">Detalle de Trabajos & Especificaciones</div>
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead>
+            <tr style="background:#1e40af; color:white; font-size:11px; text-transform:uppercase;">
+              <th style="padding:6px 8px; text-align:center; width:12%;">Cant.</th>
+              <th style="padding:6px 8px; text-align:left; width:33%;">Tipo / Ítem</th>
+              <th style="padding:6px 8px; text-align:left; width:55%;">Especificaciones / Medidas</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${subItemsList.length ? subItemsList.map(s => `
+              <tr style="border-bottom:1px solid #e5e7eb;">
+                <td style="padding:6px 8px; text-align:center; font-weight:bold;">${s.cantidad || 1}</td>
+                <td style="padding:6px 8px; font-weight:700; color:#1e40af;">${escapeHtml(s.tipo || 'Ítem')}</td>
+                <td style="padding:6px 8px; color:#374151;">${escapeHtml(s.detalles || 'Según muestra aprobada')}</td>
+              </tr>
+            `).join('') : `
+              <tr style="border-bottom:1px solid #e5e7eb;">
+                <td style="padding:6px 8px; text-align:center; font-weight:bold;">1</td>
+                <td style="padding:6px 8px; font-weight:700; color:#1e40af;">${escapeHtml(order.tipo || 'Personalizado')}</td>
+                <td style="padding:6px 8px; color:#374151;">
+                  <strong>Motivo:</strong> ${escapeHtml(order.motivo || 'General')}<br>
+                  <small>${escapeHtml(order.descripcion || 'Sin observaciones')}</small>
+                </td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Cuadro Financiero de Liquidación -->
+      <div style="background:#f9fafb; border:1px solid #d1d5db; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-weight:600; color:#4b5563;">Total del Trabajo:</span>
+          <strong style="color:#111827; font-size:13px;">$${fin.total.toFixed(2)} USD</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span style="font-weight:600; color:#059669;">Anticipo / Abono Recibido:</span>
+          <strong style="color:#059669; font-size:13px;">$${fin.abono.toFixed(2)} USD</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; border-top:1.5px solid #d1d5db; padding-top:6px; align-items:center;">
+          <span style="font-weight:800; color:${fin.saldo > 0 ? '#b91c1c' : '#15803d'}; font-size:12.5px;">SALDO PENDIENTE:</span>
+          <strong style="font-size:15px; color:${fin.saldo > 0 ? '#b91c1c' : '#15803d'};">
+            ${fin.saldo === 0 ? '0.00 USD (SOLVENTE ✅)' : '$' + fin.saldo.toFixed(2) + ' USD'}
+          </strong>
+        </div>
+        ${fin.metodo ? `
+          <div style="font-size:11px; color:#6b7280; margin-top:4px; text-align:right;">
+            Forma de Pago: <strong>${escapeHtml(fin.metodo)}</strong>
+          </div>
+        ` : ''}
+      </div>
+
+      <div style="font-size:10.5px; color:#6b7280; line-height:1.4; border:1px dashed #d1d5db; padding:8px 10px; border-radius:6px; margin-bottom:20px; text-align:justify;">
+        <strong>Conformidad del Cliente:</strong> Certifico haber recibido a entera satisfacción los productos arriba descritos, habiendo constatado diseño, medidas, ortografía y acabados. Garantía válida al momento de la recepción física.
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; text-align:center; font-size:11px; margin-top:10px;">
+        <div>
+          <div style="border-top:1px solid #111827; padding-top:4px; font-weight:bold;">Entregado por: Creaciones JJ</div>
+          <div style="font-size:10px; color:#6b7280;">Firma de Despacho</div>
+        </div>
+        <div>
+          <div style="border-top:1px solid #111827; padding-top:4px; font-weight:bold;">Recibido Conforme (Cliente)</div>
+          <div style="font-size:10px; color:#6b7280;">C.I. / Firma</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de Acciones del Comprobante -->
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" class="primary-button" onclick="window.printDeliveryNote('${escapeHtml(order.id)}')" style="flex:1; padding:8px 12px; font-size:12px; background:#1e40af; color:white; min-width:140px;">
+        🖨️ Imprimir / Guardar en PDF
+      </button>
+      <button type="button" class="secondary-button" onclick="window.sendDeliveryNoteWA('${escapeHtml(order.id)}')" style="flex:1; padding:8px 12px; font-size:12px; background:#25D366; color:white; border:none; min-width:140px; font-weight:bold;">
+        📲 Enviar por WhatsApp
+      </button>
+      <button type="button" class="secondary-button" data-action="close" style="padding:8px 12px; font-size:12px;">
+        Cerrar
+      </button>
+    </div>
+  `);
+};
+
+window.printDeliveryNote = function(orderId) {
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) return;
+  const fin = getOrderFinances(order);
+  
+  let subItemsList = [];
+  if (Array.isArray(order.subItems) && order.subItems.length) {
+    subItemsList = order.subItems;
+  } else if (typeof order.subItems === 'string') {
+    try { subItemsList = JSON.parse(order.subItems); } catch(e){}
+  }
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    alert("Por favor permite ventanas emergentes en el navegador para imprimir.");
+    return;
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Nota de Entrega NE-${escapeHtml(order.id)} - Creaciones JJ</title>
+  <style>
+    @page { size: letter portrait; margin: 15mm; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #111827; margin: 0; padding: 20px; background: #fff; font-size: 13px; line-height: 1.5; }
+    .voucher-card { max-width: 750px; margin: 0 auto; border: 2px solid #1e40af; border-radius: 8px; padding: 24px; position: relative; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 2px solid #1e40af; padding-bottom: 15px; }
+    .header-table td { vertical-align: middle; }
+    .brand-title { font-size: 24px; font-weight: 900; color: #1e40af; letter-spacing: 1px; margin: 0; }
+    .brand-subtitle { font-size: 11px; color: #4b5563; font-weight: 600; margin: 2px 0 0 0; }
+    .doc-badge { background: #1e40af; color: #ffffff; padding: 8px 16px; border-radius: 6px; text-align: center; }
+    .doc-badge h2 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .doc-badge .correlativo { font-size: 18px; font-weight: 900; margin-top: 4px; font-family: monospace; }
+    
+    .info-grid { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12.5px; }
+    .info-grid td { padding: 6px 10px; border: 1px solid #e5e7eb; }
+    .info-grid .label { font-weight: 700; color: #4b5563; background: #f9fafb; width: 22%; }
+    .info-grid .value { font-weight: 600; color: #111827; }
+    
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12.5px; }
+    .items-table th { background: #1e40af; color: #fff; padding: 8px 10px; text-align: left; font-size: 11.5px; text-transform: uppercase; }
+    .items-table td { padding: 8px 10px; border: 1px solid #d1d5db; }
+    .items-table tr:nth-child(even) { background: #f9fafb; }
+    
+    .fin-box { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    .fin-box td { padding: 8px 12px; border: 1px solid #d1d5db; }
+    .fin-title { font-weight: 700; color: #4b5563; background: #f3f4f6; width: 60%; text-align: right; }
+    .fin-amount { font-weight: 800; font-size: 14px; text-align: right; }
+    .fin-saldo { background: ${fin.saldo > 0 ? '#fef2f2' : '#f0fdf4'}; color: ${fin.saldo > 0 ? '#b91c1c' : '#15803d'}; font-size: 16px; font-weight: 900; }
+    
+    .terms-box { border: 1px dashed #9ca3af; border-radius: 6px; padding: 10px 14px; margin-bottom: 35px; background: #fafafa; font-size: 11px; color: #4b5563; text-align: justify; }
+    
+    .signatures-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+    .signatures-table td { width: 50%; text-align: center; vertical-align: bottom; padding: 0 30px; }
+    .signature-line { border-top: 1.5px solid #111827; padding-top: 6px; font-weight: 700; font-size: 12px; }
+    .signature-sub { font-size: 10.5px; color: #6b7280; margin-top: 2px; }
+    
+    @media print {
+      body { padding: 0; background: #fff; }
+      .voucher-card { border: 1px solid #000; box-shadow: none; padding: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="voucher-card">
+    <table class="header-table">
+      <tr>
+        <td>
+          <h1 class="brand-title">CREACIONES JJ, C.A.</h1>
+          <p class="brand-subtitle">Ochoa & Risquez · Diseño Gráfico, Papelería Creativa & DTF</p>
+          <p style="font-size:10px; color:#6b7280; margin:2px 0 0 0;">RIF: J-50129482-1 · Taller de Producción y Mostrador</p>
+        </td>
+        <td style="width: 260px; text-align: right;">
+          <div class="doc-badge">
+            <h2>NOTA DE ENTREGA</h2>
+            <div class="correlativo">NE-${escapeHtml(order.id)}</div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="info-grid">
+      <tr>
+        <td class="label">CLIENTE:</td>
+        <td class="value">${escapeHtml(order.cliente)}</td>
+        <td class="label">FECHA EMISIÓN:</td>
+        <td class="value">${new Date().toLocaleDateString('es-VE')}</td>
+      </tr>
+      <tr>
+        <td class="label">TELÉFONO:</td>
+        <td class="value">${escapeHtml(order.telefono || 'No registrado')}</td>
+        <td class="label">ENTREGA:</td>
+        <td class="value">${escapeHtml(formatDate(order.entrega))}</td>
+      </tr>
+      <tr>
+        <td class="label">ATENDIDO POR:</td>
+        <td class="value">${escapeHtml(order.responsable || 'Taller')}</td>
+        <td class="label">ESTADO PEDIDO:</td>
+        <td class="value">${escapeHtml(order.estado || 'Listo')}</td>
+      </tr>
+    </table>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 10%; text-align:center;">CANT.</th>
+          <th style="width: 30%;">TRABAJO / ÍTEM</th>
+          <th style="width: 60%;">ESPECIFICACIONES, DISEÑO & MEDIDAS</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${subItemsList.length ? subItemsList.map(s => `
+          <tr>
+            <td style="text-align:center; font-weight:bold;">${s.cantidad || 1}</td>
+            <td style="font-weight:700; color:#1e40af;">${escapeHtml(s.tipo || 'Ítem')}</td>
+            <td>${escapeHtml(s.detalles || 'Según muestra y especificaciones acordadas')}</td>
+          </tr>
+        `).join('') : `
+          <tr>
+            <td style="text-align:center; font-weight:bold;">1</td>
+            <td style="font-weight:700; color:#1e40af;">${escapeHtml(order.tipo || 'Personalizado')}</td>
+            <td>
+              <strong>Motivo:</strong> ${escapeHtml(order.motivo || 'General')}<br>
+              <strong>Detalle:</strong> ${escapeHtml(order.descripcion || 'Sin observaciones adicionales')}
+            </td>
+          </tr>
+        `}
+      </tbody>
+    </table>
+
+    <table class="fin-box">
+      <tr>
+        <td class="fin-title">TOTAL ACORDADO:</td>
+        <td class="fin-amount">$${fin.total.toFixed(2)} USD</td>
+      </tr>
+      <tr>
+        <td class="fin-title">ANTICIPO / ABONO RECIBIDO:</td>
+        <td class="fin-amount" style="color:#059669;">$${fin.abono.toFixed(2)} USD</td>
+      </tr>
+      <tr>
+        <td class="fin-title fin-saldo">SALDO PENDIENTE POR LIQUIDAR:</td>
+        <td class="fin-amount fin-saldo">
+          ${fin.saldo === 0 ? '0.00 USD (SOLVENTE ✅)' : '$' + fin.saldo.toFixed(2) + ' USD'}
+        </td>
+      </tr>
+      ${fin.metodo ? `
+        <tr>
+          <td class="fin-title" style="font-size:11px;">Forma / Método de Pago:</td>
+          <td class="fin-amount" style="font-size:11px; font-weight:normal;">${escapeHtml(fin.metodo)}</td>
+        </tr>
+      ` : ''}
+    </table>
+
+    <div class="terms-box">
+      <strong>DECLARACIÓN DE CONFORMIDAD Y RECEPCIÓN:</strong>
+      El cliente declara haber recibido a entera satisfacción los productos y trabajos detallados en esta Nota de Entrega, habiendo verificado previamente el diseño gráfico, ortografía, colores, medidas y acabados. Toda observación o reclamo debe formalizarse inmediatamente al momento de la entrega física. Creaciones JJ garantiza la calidad de sus materiales y mano de obra.
+    </div>
+
+    <table class="signatures-table">
+      <tr>
+        <td>
+          <div class="signature-line">Por Creaciones JJ (Taller)</div>
+          <div class="signature-sub">Firma Autorizada / Despacho</div>
+        </td>
+        <td>
+          <div class="signature-line">Recibido Conforme (Cliente)</div>
+          <div class="signature-sub">Nombre, Firma y C.I. del Receptor</div>
+        </td>
+      </tr>
+    </table>
+  </div>
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 350);
+    };
+  <\/script>
+</body>
+</html>`;
+
+  printWin.document.open();
+  printWin.document.write(html);
+  printWin.document.close();
+};
+
+window.sendDeliveryNoteWA = function(orderId) {
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) return;
+  const fin = getOrderFinances(order);
+  const rawPhone = String(order.telefono || "").replace(/[^0-9]/g, "");
+  let phone = rawPhone;
+  if (phone.startsWith("0")) phone = "58" + phone.substring(1);
+  else if (phone.length === 10 && !phone.startsWith("58")) phone = "58" + phone;
+
+  let subItemsList = [];
+  if (Array.isArray(order.subItems) && order.subItems.length) {
+    subItemsList = order.subItems;
+  } else if (typeof order.subItems === 'string') {
+    try { subItemsList = JSON.parse(order.subItems); } catch(e){}
+  }
+
+  let itemsText = "";
+  if (subItemsList.length) {
+    itemsText = subItemsList.map(s => `• *${s.cantidad || 1}x ${s.tipo}* ${s.detalles ? '(' + s.detalles + ')' : ''}`).join('\n');
+  } else {
+    itemsText = `• *1x ${order.tipo}* (${order.motivo || 'Personalizado'})\n  _${order.descripcion || 'Según especificaciones'}_`;
+  }
+
+  const saldoText = fin.saldo === 0 
+    ? "✅ *SOLVENTE (100% CANCELADO)*" 
+    : `⚠️ *$${fin.saldo.toFixed(2)} USD PENDIENTE POR CANCELAR*`;
+
+  const msg = `📄 *NOTA DE ENTREGA - CREACIONES JJ*
+*Comprobante:* NE-${order.id}
+*Fecha:* ${new Date().toLocaleDateString('es-VE')}
+*Cliente:* ${order.cliente}
+*Estado:* ${order.estado || 'Listo para entrega'}
+
+📦 *DETALLE DE TU PEDIDO:*
+${itemsText}
+
+💵 *RESUMEN DE PAGO:*
+• *Total Acordado:* $${fin.total.toFixed(2)} USD
+• *Anticipo Recibido:* $${fin.abono.toFixed(2)} USD
+• *Saldo:* ${saldoText}
+• *Método:* ${fin.metodo || 'No especificado'}
+
+✨ _¡Gracias por confiar en Creaciones JJ! Tu pedido ha sido confeccionado con la más alta dedicación y calidad._`;
+
+  if (!phone) {
+    alert("Este pedido no tiene número de teléfono registrado.");
+    return;
+  }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
 window.saveOrderDuration = async function(orderId) {
@@ -5399,9 +6586,79 @@ function formOrder() {
         <select name="responsable"><option value="">Sin asignar</option>${users.map(u => `<option value="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join("")}</select>
       </label>
       <label class="field"><span class="field-label">DESCRIPCIÓN / MEDIDAS</span><textarea id="input-descripcion" name="descripcion" placeholder="Detalles, medidas, edad, posición..."></textarea></label>
+
+      <!-- SECCIÓN FINANCIERA Y COBRO (100% Opcional - Creaciones JJ) -->
+      <div class="physical-invoice-box" style="border:1.5px solid #10b981; background:rgba(16,185,129,0.04); border-radius:10px; padding:12px; margin-top:14px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:800; color:#10b981; display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-cash-register"></i> 💵 PRESUPUESTO Y PAGO INICIAL (OPCIONAL)
+          </span>
+          <span id="form-order-payment-badge" style="font-size:10px; padding:2px 8px; border-radius:10px; background:#64748b; color:white; font-weight:bold;">Sin Cotizar</span>
+        </div>
+        <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">
+          Si ya acordaste el precio con el cliente, puedes registrar el total y abono aquí. Si no, puedes dejarlo vacío y cotizarlo más tarde en el taller.
+        </p>
+        <div class="form-inline" style="gap:8px; margin-bottom:8px;">
+          <label class="field" style="flex:1;">
+            <span class="field-label">PRECIO TOTAL ACORDADO ($)</span>
+            <input type="number" id="input-form-costo" name="costo" step="0.01" min="0" placeholder="0.00" oninput="window.recalcFormOrderPayment()">
+          </label>
+          <label class="field" style="flex:1;">
+            <span class="field-label">ANTICIPO / ABONO RECIBIDO ($)</span>
+            <input type="number" id="input-form-anticipo" name="anticipo" step="0.01" min="0" placeholder="0.00" oninput="window.recalcFormOrderPayment()">
+          </label>
+          <label class="field" style="flex:1;">
+            <span class="field-label">RESTA / SALDO ($)</span>
+            <input type="number" id="input-form-resta" name="resta" step="0.01" placeholder="0.00" readonly style="background:rgba(0,0,0,0.25); font-weight:bold; color:#ef4444;">
+          </label>
+        </div>
+        <div class="form-inline" style="gap:8px;">
+          <label class="field" style="flex:1;">
+            <span class="field-label">MÉTODO DE PAGO</span>
+            <select id="select-form-metodo" name="metodoPago" style="font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:6px 8px;">
+              <option value="Pendiente">Pendiente / Sin Definir</option>
+              <option value="Efectivo USD">Efectivo ($ Dólares)</option>
+              <option value="Pago Móvil">Pago Móvil</option>
+              <option value="Efectivo Bs">Efectivo (Bs Bolívares)</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Punto de Venta">Punto de Venta</option>
+              <option value="Mixto">Mixto (Efectivo + Pago Móvil)</option>
+            </select>
+          </label>
+          <label class="field" style="flex:1.5;">
+            <span class="field-label">REFERENCIA / NOTA DE PAGO</span>
+            <input type="text" id="input-form-notapago" name="notaPago" placeholder="Ej. Ref 4821 / Recibió Jeanette en efectivo">
+          </label>
+        </div>
+      </div>
+
       <div class="modal-footer"><button type="submit" class="primary-button">Guardar Pedido</button></div>
     </form>
   `);
+
+  window.recalcFormOrderPayment = function() {
+    const total = parseFloat(document.getElementById("input-form-costo")?.value || 0);
+    const anticipo = parseFloat(document.getElementById("input-form-anticipo")?.value || 0);
+    const restaEl = document.getElementById("input-form-resta");
+    const badgeEl = document.getElementById("form-order-payment-badge");
+    const resta = Math.max(0, total - anticipo);
+    if (restaEl) restaEl.value = total > 0 ? resta.toFixed(2) : "0.00";
+    if (badgeEl) {
+      if (total <= 0) {
+        badgeEl.textContent = "Sin Cotizar";
+        badgeEl.style.background = "#64748b";
+      } else if (resta <= 0.01) {
+        badgeEl.textContent = "Pagado Completo";
+        badgeEl.style.background = "#10b981";
+      } else if (anticipo > 0) {
+        badgeEl.textContent = "Abonó Anticipo";
+        badgeEl.style.background = "#0ea5e9";
+      } else {
+        badgeEl.textContent = "Pendiente por Cobrar";
+        badgeEl.style.background = "#ef4444";
+      }
+    }
+  };
 
   let formCapturedImages = [];
 
@@ -5560,6 +6817,24 @@ function formOrder() {
     if (!formDataObj.descripcion && $("#input-descripcion")?.value) {
       formDataObj.descripcion = $("#input-descripcion").value.trim();
     }
+
+    // Extracción segura de finanzas opcionales (Creaciones JJ)
+    const fCosto = parseFloat(formDataObj.costo || document.getElementById("input-form-costo")?.value || 0);
+    const fAnticipo = parseFloat(formDataObj.anticipo || document.getElementById("input-form-anticipo")?.value || 0);
+    const fMetodo = formDataObj.metodoPago || document.getElementById("select-form-metodo")?.value || "Pendiente";
+    const fNotaPago = (formDataObj.notaPago || document.getElementById("input-form-notapago")?.value || "").trim();
+    const fSaldo = Math.max(0, fCosto - fAnticipo);
+
+    formDataObj.costo = fCosto;
+    formDataObj.anticipo = fAnticipo;
+    formDataObj.saldoPendiente = fSaldo;
+    formDataObj.metodoPago = fMetodo;
+
+    if (fCosto > 0 || fAnticipo > 0 || fNotaPago) {
+      const tagFinanzas = `[FINANZAS: total=${fCosto.toFixed(2)} | abono=${fAnticipo.toFixed(2)} | saldo=${fSaldo.toFixed(2)} | metodo=${fMetodo}${fNotaPago ? ' | ref=' + fNotaPago : ''}]`;
+      formDataObj.notas = formDataObj.notas ? `${formDataObj.notas}\n${tagFinanzas}` : tagFinanzas;
+    }
+
     formDataObj.clientRequestId = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
 
     // 2. Ahora sí deshabilitar el botón y los campos visualmente
@@ -10303,8 +11578,12 @@ window.printReport = function() {
     ? 'Reporte General de Pedidos'
     : 'Reporte de Pedidos Completados';
 
-  // Calcular estadísticas por trabajador
+  // Calcular estadísticas por trabajador y finanzas del reporte
   const workerStats = {};
+  let printBilled = 0;
+  let printCollected = 0;
+  let printReceivable = 0;
+
   targetOrders.forEach(o => {
     const resp = String(o.responsable || "").trim();
     if (!workerStats[resp]) {
@@ -10312,6 +11591,13 @@ window.printReport = function() {
     }
     workerStats[resp].count++;
     workerStats[resp].totalMin += Number(o.duracionRealMin || 0);
+
+    const f = getOrderFinances(o);
+    if (f.total > 0) {
+      printBilled += f.total;
+      printCollected += f.abono;
+      printReceivable += f.saldo;
+    }
   });
   
   // Generar contenido HTML para imprimir
@@ -10331,11 +11617,11 @@ window.printReport = function() {
         th { background-color: #f3f4f6; font-weight: bold; font-size: 9px; }
         tr:nth-child(even) { background-color: #f9fafb; }
         .summary { background-color: #eff6ff; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 10px; }
-        .summary-item { display: inline-block; margin-right: 20px; }
+        .summary-item { display: inline-block; margin-right: 20px; margin-bottom: 4px; }
         .summary-label { font-weight: bold; color: #1e40af; }
-        .summary-value { color: #6b7280; }
+        .summary-value { color: #374151; font-weight: 600; }
         .worker-summary { margin-top: 15px; background-color: #fef3c7; padding: 10px; border-radius: 6px; }
-        .worker-item { display: inline-block; margin-right: 25px; }
+        .worker-item { display: inline-block; margin-right: 25px; margin-bottom: 4px; }
         .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #9ca3af; }
         @media print { body { padding: 5px; } }
       </style>
@@ -10343,7 +11629,7 @@ window.printReport = function() {
     <body>
       <div class="logo-container">
         <div class="logo-text">CREACIONES JJ</div>
-        <div class="logo-sub">Ochoa & Risquez · Taller</div>
+        <div class="logo-sub">Ochoa & Risquez · Taller de Producción</div>
       </div>
       <h1>${reportTitle}</h1>
       <h2>Creaciones JJ Ochoa & Risquez · Taller</h2>
@@ -10365,32 +11651,52 @@ window.printReport = function() {
           <span class="summary-label">Categoría:</span>
           <span class="summary-value">${viewType === 'cancelled' ? '🚫 Solo Cancelados' : viewType === 'active' ? '⚡ Activos en taller' : viewType === 'overdue' ? '🚨 Rezagados' : viewType === 'all' ? '📋 Todos' : '✅ Completados exitosos'}</span>
         </div>
+        <div class="summary-item" style="border-left: 2px solid #1e40af; padding-left: 10px;">
+          <span class="summary-label">Facturación:</span>
+          <span class="summary-value" style="color:#0284c7;">$${printBilled.toFixed(2)} USD</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Cobrado:</span>
+          <span class="summary-value" style="color:#059669;">$${printCollected.toFixed(2)} USD</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Saldo por Cobrar:</span>
+          <span class="summary-value" style="color:${printReceivable > 0 ? '#b91c1c' : '#059669'};">$${printReceivable.toFixed(2)} USD</span>
+        </div>
       </div>
       
       <table>
         <thead>
           <tr>
-            <th style="width: 12%;">ID</th>
-            <th style="width: 20%;">Cliente</th>
-            <th style="width: 15%;">Responsable</th>
-            <th style="width: 13%;">Fecha Cierre / Entrega</th>
-            <th style="width: 10%;">Tiempo</th>
+            <th style="width: 10%;">ID</th>
+            <th style="width: 18%;">Cliente</th>
+            <th style="width: 14%;">Responsable</th>
+            <th style="width: 12%;">Fecha</th>
+            <th style="width: 8%;">Tiempo</th>
             <th style="width: 10%;">Estado</th>
-            <th style="width: 20%;">Tipo</th>
+            <th style="width: 18%;">Tipo</th>
+            <th style="width: 10%; text-align:right;">Total / Saldo</th>
           </tr>
         </thead>
         <tbody>
-          ${targetOrders.map(o => `
-            <tr>
-              <td>${escapeHtml(o.id)}</td>
-              <td>${escapeHtml(o.cliente)}</td>
-              <td>${escapeHtml(o.responsable)}</td>
-              <td>${escapeHtml(formatDate(o.fechaCierre || o.entrega))}</td>
-              <td>${o.duracionRealMin || 0} min</td>
-              <td style="font-weight:bold; color:${String(o.estado||'').toLowerCase().includes('cancel') ? '#ef4444' : '#10b981'};">${escapeHtml(o.estado)}</td>
-              <td>${escapeHtml(o.tipo)}</td>
-            </tr>
-          `).join('') || '<tr><td colspan="7" style="text-align:center; padding:10px;">No hay registros para este filtro.</td></tr>'}
+          ${targetOrders.map(o => {
+            const f = getOrderFinances(o);
+            return `
+              <tr>
+                <td>${escapeHtml(o.id)}</td>
+                <td>${escapeHtml(o.cliente)}</td>
+                <td>${escapeHtml(o.responsable)}</td>
+                <td>${escapeHtml(formatDate(o.fechaCierre || o.entrega))}</td>
+                <td>${o.duracionRealMin || 0} min</td>
+                <td style="font-weight:bold; color:${String(o.estado||'').toLowerCase().includes('cancel') ? '#ef4444' : '#10b981'};">${escapeHtml(o.estado)}</td>
+                <td>${escapeHtml(o.tipo)}</td>
+                <td style="text-align:right; font-weight:bold;">
+                  ${f.total > 0 ? `$${f.total.toFixed(2)}` : '<span style="color:#9ca3af;">-</span>'}
+                  ${f.saldo > 0 ? `<br><small style="color:#ef4444;">Debe: $${f.saldo.toFixed(2)}</small>` : ''}
+                </td>
+              </tr>
+            `;
+          }).join('') || '<tr><td colspan="8" style="text-align:center; padding:10px;">No hay registros para este filtro.</td></tr>'}
         </tbody>
       </table>
       
