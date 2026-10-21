@@ -635,7 +635,7 @@ function formatRoleLabel(roleStr) {
 }
 
 function getLocalDateStr(d = new Date()) {
-  const dateObj = (typeof d === "string" || typeof d === "number") ? new Date(d) : d;
+  const dateObj = (typeof d === "string" || typeof d === "number") ? (safeParseDate(d) || new Date(d)) : d;
   if (!dateObj || isNaN(dateObj.getTime())) return "";
   const year = dateObj.getFullYear();
   const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
@@ -1574,62 +1574,13 @@ function teamView() {
       return (ov.length > 0 || urg.length > 0) ? `
         <div class="critical-banner" style="margin-bottom:12px;">
           <div class="critical-banner-inner">
-            ${ov.length > 0 ? `<span class="banner-overdue">\ud83d\udea8 ${ov.length} RETRASADO${ov.length>1?'S':''}</span>` : ''}
-            ${urg.length > 0 ? `<span class="banner-urgent">\u26a1 ${urg.length} URGENTE${urg.length>1?'S':''}</span>` : ''}
+            ${ov.length > 0 ? `<span class="banner-overdue">🚨 ${ov.length} RETRASADO${ov.length>1?'S':''}</span>` : ''}
+            ${urg.length > 0 ? `<span class="banner-urgent">⚡ ${urg.length} URGENTE${urg.length>1?'S':''}</span>` : ''}
           </div>
         </div>` : '';
     })()}
     <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
       <button class="primary-button" data-action="new-order">＋ Registrar pedido</button>
-    </div>
-    
-    <!-- PANEL DE CORTES GERENCIALES (JEFES CREACIONES JJ) -->
-    <div style="background:var(--bg-card, #ffffff); border:1.5px solid var(--border-color, #e5e7eb); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
-        <div>
-          <strong style="color:var(--text-main); font-size:14px; display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-chart-pie" style="color:#0ea5e9;"></i> CORTE DE PEDIDOS &amp; RENDIMIENTO:
-          </strong>
-          <span style="font-size:12px; color:var(--text-muted);">Visualiza trabajos completados según el rango seleccionado.</span>
-        </div>
-        
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'hoy' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('hoy')">📅 Hoy</button>
-          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'semana' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('semana')">⚡ Esta Semana</button>
-          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'mes' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('mes')">📆 Este Mes</button>
-          <button type="button" class="secondary-button" style="padding:4px 10px; font-size:11.5px; border-radius:8px; font-weight:700; ${window._jjHistoryCut === 'todos' ? 'background:#0ea5e9; color:white; border:none;' : ''}" onclick="window.setHistoryCut('todos')">🌐 Todos</button>
-        </div>
-      </div>
-
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
-        <div style="background:rgba(14,165,233,0.08); border-left:3.5px solid #0ea5e9; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#0284c7;">TOTAL CORTE</span>
-          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.length} pedidos</div>
-        </div>
-        <div style="background:rgba(16,185,129,0.08); border-left:3.5px solid #10b981; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#059669;">TOPPERS 3D</span>
-          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('topper')).length}</div>
-        </div>
-        <div style="background:rgba(168,85,247,0.08); border-left:3.5px solid #a855f7; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#7e22ce;">DTF &amp; SUBLIMACIÓN</span>
-          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => String(o.tipo).toLowerCase().includes('dtf') || String(o.tipo).toLowerCase().includes('sublim')).length}</div>
-        </div>
-        <div style="background:rgba(245,158,11,0.08); border-left:3.5px solid #f59e0b; padding:8px 12px; border-radius:8px;">
-          <span style="font-size:11px; font-weight:800; color:#d97706;">CAJAS &amp; PAPELERÍA</span>
-          <div style="font-size:17px; font-weight:900; color:var(--text-main); margin-top:2px;">${orders.filter(o => !String(o.tipo).toLowerCase().includes('topper') && !String(o.tipo).toLowerCase().includes('dtf')).length}</div>
-        </div>
-      </div>
-
-      <div style="margin-top:10px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:12px;">
-        <span style="color:var(--text-muted); font-weight:bold;">Filtrar tipo:</span>
-        <select onchange="window.setHistoryType(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-size:12px;">
-          <option value="todos" ${window._jjHistoryType === 'todos' ? 'selected' : ''}>Todos los tipos</option>
-          <option value="topper" ${window._jjHistoryType === 'topper' ? 'selected' : ''}>Toppers 3D &amp; Pastelería</option>
-          <option value="dtf" ${window._jjHistoryType === 'dtf' ? 'selected' : ''}>DTF Textil &amp; Sublimación</option>
-          <option value="caja" ${window._jjHistoryType === 'caja' ? 'selected' : ''}>Cajas Sorpresa &amp; Regalos</option>
-          <option value="birrete" ${window._jjHistoryType === 'birrete' ? 'selected' : ''}>Birretes &amp; Académico</option>
-        </select>
-      </div>
     </div>
 
     <div class="search-bar-container" style="margin-bottom:16px;">
@@ -2441,13 +2392,18 @@ function reportsView() {
     });
   };
 
-  const periodFinishedOrders = filterByPeriod(finishedOrders);
+  const isCancelled = (o) => String(o.estado || "").toLowerCase().trim() === "cancelado";
+  const realFinishedOrders = finishedOrders.filter(o => !isCancelled(o));
+  const cancelledOrders = finishedOrders.filter(isCancelled);
 
-  // Casos del período seleccionado (activos + completados del filtro vigente)
+  const periodFinishedOrders = filterByPeriod(realFinishedOrders);
+  const periodCancelledOrders = filterByPeriod(cancelledOrders);
+
+  // Casos del período seleccionado (activos + completados reales + cancelados del filtro vigente)
   const periodActiveOrders = filterByPeriod(activeOrders);
-  const casesThisPeriod = periodActiveOrders.length + periodFinishedOrders.length;
+  const casesThisPeriod = periodActiveOrders.length + periodFinishedOrders.length + periodCancelledOrders.length;
 
-  // Cumplimiento a tiempo - Mejorado para usar finProduccion cuando fechaCierre no está disponible
+  // Cumplimiento a tiempo - Solo sobre pedidos finalizados con éxito
   const onTimeFinished = periodFinishedOrders.filter(o => {
     const ent = safeParseDate(o.entrega);
     // Usar fechaCierre si está disponible, sino usar finProduccion
@@ -2464,7 +2420,7 @@ function reportsView() {
   });
   const complianceRate = periodFinishedOrders.length ? Math.round((onTimeFinished.length / periodFinishedOrders.length) * 100) : 100;
 
-  // Promedio en mesa
+  // Promedio en mesa - Solo sobre pedidos completados reales
   const durations = periodFinishedOrders.map(o => Number(o.duracionRealMin || 0)).filter(d => d > 0);
   const avgMins = durations.length ? Math.round(durations.reduce((a,b)=>a+b, 0) / durations.length) : 0;
 
@@ -2512,6 +2468,9 @@ function reportsView() {
         <button type="button" class="secondary-button" onclick="window.setReportsViewType('overdue')" style="background:${viewType === 'overdue' ? '#ef4444; color:white;' : 'var(--bg-card)'}; font-weight:bold; font-size:12px; padding:6px 12px;">
           <i class="fas fa-exclamation-circle"></i> Rezagados (${overdueOrders.length})
         </button>
+        <button type="button" class="secondary-button" onclick="window.setReportsViewType('cancelled')" style="background:${viewType === 'cancelled' ? '#ef4444; color:white;' : 'var(--bg-card)'}; font-weight:bold; font-size:12px; padding:6px 12px;">
+          <i class="fas fa-ban"></i> Cancelados (${periodCancelledOrders.length})
+        </button>
         <button type="button" class="secondary-button" onclick="window.setReportsViewType('all')" style="background:${viewType === 'all' ? '#8b5cf6; color:white;' : 'var(--bg-card)'}; font-weight:bold; font-size:12px; padding:6px 12px;">
           <i class="fas fa-layer-group"></i> Todos (${casesThisPeriod})
         </button>
@@ -2557,7 +2516,7 @@ function reportsView() {
             <i class="fas fa-calendar-check"></i> CASOS DEL PERÍODO
           </div>
           <div style="font-size:28px; font-weight:900; color:var(--text-main);">${casesThisPeriod}</div>
-          <div style="font-size:11px; color:var(--text-muted);">${activeOrders.length} activos + ${periodFinishedOrders.length} completados</div>
+          <div style="font-size:11px; color:var(--text-muted);">${activeOrders.length} activos · ${periodFinishedOrders.length} completados${periodCancelledOrders.length ? ` · <span style="color:#ef4444; font-weight:bold;">${periodCancelledOrders.length} cancelados</span>` : ''}</div>
         </div>
 
         <div class="sics-metric-card">
@@ -2596,12 +2555,14 @@ function reportsView() {
             <h3 style="margin:0; font-size:16px; color:var(--text-main);">
               ${viewType === 'completed' ? '✅ Pedidos Completados' : 
                 viewType === 'active' ? '⚡ Pedidos Activos' : 
-                viewType === 'overdue' ? '🚨 Pedidos Rezagados' : '📋 Todos los Pedidos'}
+                viewType === 'overdue' ? '🚨 Pedidos Rezagados' : 
+                viewType === 'cancelled' ? '🚫 Pedidos Cancelados' : '📋 Todos los Pedidos'}
             </h3>
             <div style="font-size:11.5px; color:var(--text-muted);">
-              ${viewType === 'completed' ? `Órdenes finalizadas en el período seleccionado (${periodFinishedOrders.length})` :
+              ${viewType === 'completed' ? `Órdenes finalizadas exitosamente en el período seleccionado (${periodFinishedOrders.length})` :
                 viewType === 'active' ? `Órdenes actualmente en producción (${periodActiveOrders.length})` :
                 viewType === 'overdue' ? `Órdenes con entrega vencida (${overdueOrders.length})` :
+                viewType === 'cancelled' ? `Órdenes anuladas o canceladas en el período (${periodCancelledOrders.length})` :
                 `Todos los casos del período (${casesThisPeriod})`}
             </div>
           </div>
@@ -2627,7 +2588,8 @@ function reportsView() {
               ${(viewType === 'completed' ? periodFinishedOrders : 
                  viewType === 'active' ? periodActiveOrders : 
                  viewType === 'overdue' ? overdueOrders : 
-                 [...periodActiveOrders, ...periodFinishedOrders]).map(o => `
+                 viewType === 'cancelled' ? periodCancelledOrders : 
+                 [...periodActiveOrders, ...periodFinishedOrders, ...periodCancelledOrders]).map(o => `
                 <tr onclick="navigate('team'); setTimeout(() => document.querySelector('[data-id="${escapeHtml(o.id)}"]')?.click(), 100);" style="cursor:pointer;">
                   <td style="font-family:monospace; font-weight:bold;">${escapeHtml(o.id)}</td>
                   <td style="font-weight:bold;">${escapeHtml(o.cliente)}</td>
@@ -2635,7 +2597,7 @@ function reportsView() {
                   <td>${escapeHtml(o.responsable)}</td>
                   <td>${escapeHtml(formatDate(o.entrega))}</td>
                   <td>
-                    <span style="padding:2px 8px; border-radius:10px; font-size:10.5px; font-weight:bold; background:${o.estado === 'Terminado' || o.estado === 'Entregado' ? 'rgba(16,185,129,0.2); color:#10b981;' : o.estado === 'En proceso' ? 'rgba(59,130,246,0.2); color:#3b82f6;' : 'rgba(245,158,11,0.2); color:#f59e0b;'}">
+                    <span style="padding:2px 8px; border-radius:10px; font-size:10.5px; font-weight:bold; background:${String(o.estado || '').toLowerCase().includes('cancel') ? 'rgba(239,68,68,0.2); color:#ef4444;' : o.estado === 'Terminado' || o.estado === 'Entregado' ? 'rgba(16,185,129,0.2); color:#10b981;' : o.estado === 'En proceso' ? 'rgba(59,130,246,0.2); color:#3b82f6;' : 'rgba(245,158,11,0.2); color:#f59e0b;'}">
                       ${escapeHtml(o.estado)}
                     </span>
                   </td>
@@ -2879,7 +2841,7 @@ function schedulesView() {
           <button type="button" class="secondary-button" onclick="navigate('modules')" style="padding:5px 12px; font-size:12px; margin-bottom:8px; border-radius:20px;">
             <i class="fas fa-arrow-left"></i> Volver a Módulos
           </button>
-          <h2 style="margin:0; font-size:22px;">📅 Horarios y Guardias del Equipo (SICS)</h2>
+          <h2 style="margin:0; font-size:22px;">📅 Horarios y Guardias del Equipo</h2>
           <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">
             Turnos rotativos semanales filtrados por cargo y asignación personal.
           </p>
@@ -2973,11 +2935,14 @@ function financesView() {
     return `<div class="empty"><strong>Acceso Restringido: Este módulo solo está disponible para Jefes y Managers.</strong></div>`;
   }
   
-  const finished = state.data.finishedOrders || [];
+  const finished = (state.data.finishedOrders || []).filter(o => String(o.estado || "").toLowerCase().trim() !== "cancelado");
   const now = new Date();
-  const todayLocal = getLocalDateStr(now);
+  const parseFinDate = (o) => safeParseDate(o.finProduccion || o.fechaCierre || o.entrega || o.creado);
   
-  const todayOrders = finished.filter(o => o.finProduccion && getLocalDateStr(o.finProduccion) === todayLocal);
+  const todayOrders = finished.filter(o => {
+    const d = parseFinDate(o);
+    return d && d.toDateString() === now.toDateString();
+  });
   
   const day = now.getDay();
   const diffToMon = (day === 0 ? -6 : 1 - day);
@@ -2987,10 +2952,15 @@ function financesView() {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   sunday.setHours(23,59,59,999);
-  const weekOrders = finished.filter(o => o.finProduccion && new Date(o.finProduccion) >= monday && new Date(o.finProduccion) <= sunday);
+  const weekOrders = finished.filter(o => {
+    const d = parseFinDate(o);
+    return d && d >= monday && d <= sunday;
+  });
   
-  const monthIso = now.toISOString().substring(0, 7);
-  const monthOrders = finished.filter(o => o.finProduccion && String(o.finProduccion).startsWith(monthIso));
+  const monthOrders = finished.filter(o => {
+    const d = parseFinDate(o);
+    return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
   
   const sumRev = (arr) => arr.reduce((s, o) => s + Number(o.costo || 0), 0);
 
@@ -2998,6 +2968,7 @@ function financesView() {
   const revWeek = sumRev(weekOrders);
   const revMonth = sumRev(monthOrders);
   const revAll = sumRev(finished);
+  const paidOrders = finished.filter(o => Number(o.costo || 0) > 0);
 
   return `
     <div style="background:var(--bg-card); padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md);">
@@ -3025,11 +2996,11 @@ function financesView() {
         <div style="background:rgba(217,119,6,.1); border:1px solid #d97706; padding:16px; border-radius:10px; text-align:center;">
           <span style="font-size:12px; color:#d97706; font-weight:800;">HISTÓRICO COMPLETO</span>
           <h2 style="color:#d97706; margin:6px 0 0 0;">$${revAll.toFixed(2)}</h2>
-          <small style="color:var(--text-muted);">${finished.length} trabajos</small>
+          <small style="color:var(--text-muted);">${paidOrders.length} con cobro / ${finished.length} total</small>
         </div>
       </div>
 
-      <h3 style="font-size:15px; margin-bottom:12px;">DESGLOSE DE PROYECTOS CON COBRO REGISTRADO (${finished.length})</h3>
+      <h3 style="font-size:15px; margin-bottom:12px;">DESGLOSE DE PROYECTOS (${finished.length} finalizados · ${paidOrders.length} con cobro registrado)</h3>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
           <thead>
@@ -3052,7 +3023,9 @@ function financesView() {
                 <td style="padding:8px;">${escapeHtml(o.motivo || '-')}</td>
                 <td style="padding:8px;">${escapeHtml(o.responsable)}</td>
                 <td style="padding:8px;">${o.duracionRealMin || 0} min</td>
-                <td style="padding:8px; font-weight:bold; color:#059669;">$${Number(o.costo || 0).toFixed(2)}</td>
+                <td style="padding:8px; font-weight:bold; color:${Number(o.costo || 0) > 0 ? '#059669' : 'var(--text-muted)'};">
+                  ${Number(o.costo || 0) > 0 ? '$' + Number(o.costo).toFixed(2) : '<span style="font-size:11px; opacity:0.65; font-style:italic;">Pendiente</span>'}
+                </td>
               </tr>
             `).join('') || '<tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted);">No hay trabajos finalizados.</td></tr>'}
           </tbody>
@@ -10304,11 +10277,35 @@ window.printReport = function() {
     });
   };
   
-  const periodFinishedOrders = filterByPeriod(finishedOrders);
-  
+  const isCancelled = (o) => String(o.estado || "").toLowerCase().trim() === "cancelado";
+  const realFinished = finishedOrders.filter(o => !isCancelled(o));
+  const cancelledOnly = finishedOrders.filter(isCancelled);
+  const activeOnly = allOrders.filter(active);
+
+  const viewType = state.reportsViewType || 'completed';
+  const targetOrders = (viewType === 'cancelled') 
+    ? filterByPeriod(cancelledOnly)
+    : (viewType === 'active')
+    ? filterByPeriod(activeOnly)
+    : (viewType === 'overdue')
+    ? activeOnly.filter(o => priority(o) === 'overdue')
+    : (viewType === 'all')
+    ? [...filterByPeriod(activeOnly), ...filterByPeriod(realFinished), ...filterByPeriod(cancelledOnly)]
+    : filterByPeriod(realFinished); // 'completed'
+
+  const reportTitle = (viewType === 'cancelled')
+    ? 'Reporte de Pedidos Cancelados'
+    : (viewType === 'active')
+    ? 'Reporte de Pedidos Activos en Taller'
+    : (viewType === 'overdue')
+    ? 'Reporte de Pedidos Rezagados'
+    : (viewType === 'all')
+    ? 'Reporte General de Pedidos'
+    : 'Reporte de Pedidos Completados';
+
   // Calcular estadísticas por trabajador
   const workerStats = {};
-  periodFinishedOrders.forEach(o => {
+  targetOrders.forEach(o => {
     const resp = String(o.responsable || "").trim();
     if (!workerStats[resp]) {
       workerStats[resp] = { count: 0, totalMin: 0 };
@@ -10321,7 +10318,7 @@ window.printReport = function() {
   const printContent = `
     <html>
     <head>
-      <title>Reporte de Pedidos Completados - Creaciones JJ</title>
+      <title>${reportTitle} - Creaciones JJ</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 11px; background: #fff; }
         h1 { text-align: center; color: #1e40af; margin: 0 0 5px 0; font-size: 16px; }
@@ -10348,21 +10345,25 @@ window.printReport = function() {
         <div class="logo-text">CREACIONES JJ</div>
         <div class="logo-sub">Ochoa & Risquez · Taller</div>
       </div>
-      <h1>Reporte de Pedidos Completados</h1>
+      <h1>${reportTitle}</h1>
       <h2>Creaciones JJ Ochoa & Risquez · Taller</h2>
       
       <div class="summary">
         <div class="summary-item">
-          <span class="summary-label">Total:</span>
-          <span class="summary-value">${periodFinishedOrders.length}</span>
+          <span class="summary-label">Total en reporte:</span>
+          <span class="summary-value">${targetOrders.length}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Fecha:</span>
+          <span class="summary-label">Fecha de emisión:</span>
           <span class="summary-value">${new Date().toLocaleDateString()}</span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Filtro:</span>
+          <span class="summary-label">Filtro aplicado:</span>
           <span class="summary-value">${currentFilter === 'month' ? 'Este mes' : currentFilter === 'today' ? 'Hoy' : currentFilter === 'week' ? 'Esta semana' : currentFilter === 'custom' ? 'Personalizado' : 'Todo el historial'}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Categoría:</span>
+          <span class="summary-value">${viewType === 'cancelled' ? '🚫 Solo Cancelados' : viewType === 'active' ? '⚡ Activos en taller' : viewType === 'overdue' ? '🚨 Rezagados' : viewType === 'all' ? '📋 Todos' : '✅ Completados exitosos'}</span>
         </div>
       </div>
       
@@ -10372,24 +10373,24 @@ window.printReport = function() {
             <th style="width: 12%;">ID</th>
             <th style="width: 20%;">Cliente</th>
             <th style="width: 15%;">Responsable</th>
-            <th style="width: 13%;">Fecha Cierre</th>
+            <th style="width: 13%;">Fecha Cierre / Entrega</th>
             <th style="width: 10%;">Tiempo</th>
             <th style="width: 10%;">Estado</th>
             <th style="width: 20%;">Tipo</th>
           </tr>
         </thead>
         <tbody>
-          ${periodFinishedOrders.map(o => `
+          ${targetOrders.map(o => `
             <tr>
               <td>${escapeHtml(o.id)}</td>
               <td>${escapeHtml(o.cliente)}</td>
               <td>${escapeHtml(o.responsable)}</td>
-              <td>${escapeHtml(formatDate(o.fechaCierre))}</td>
+              <td>${escapeHtml(formatDate(o.fechaCierre || o.entrega))}</td>
               <td>${o.duracionRealMin || 0} min</td>
-              <td>${escapeHtml(o.estado)}</td>
+              <td style="font-weight:bold; color:${String(o.estado||'').toLowerCase().includes('cancel') ? '#ef4444' : '#10b981'};">${escapeHtml(o.estado)}</td>
               <td>${escapeHtml(o.tipo)}</td>
             </tr>
-          `).join('')}
+          `).join('') || '<tr><td colspan="7" style="text-align:center; padding:10px;">No hay registros para este filtro.</td></tr>'}
         </tbody>
       </table>
       
