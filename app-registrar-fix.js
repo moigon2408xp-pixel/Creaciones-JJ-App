@@ -442,11 +442,11 @@ const normalizeOrder = (o) => {
     cliente: String(o.cliente || o.Cliente || "Sin cliente").trim(),
     tipo: String(o.tipo || o['Tipo de trabajo'] || o.Tipo || o.trabajo || "Sin tipo").trim(),
     motivo: String(o.motivo || o.Motivo || o['Temática'] || o.tematica || "").trim(),
-    descripcion: String(o.descripcion || o.Descripción || "").trim(),
+    descripcion: String(o.descripcion || o['Descripción'] || o['Descripcion'] || "").trim(),
     entrega: String(o.entrega || o['Fecha entrega'] || o.Entrega || "").trim(),
     responsable: resp,
     estado: String(o.estado || o.Estado || "Pendiente").trim(),
-    diseno: String(o.diseno || o.diseño || "No").trim(),
+    diseno: String(o.diseno || o['diseño'] || o['diseno'] || "No").trim(),
     material: String(o.material || o.Material || "No").trim(),
     notas: String(o.notas || o.Notas || o.observaciones || o.Observaciones || "").trim(),
     telefono: phone,
@@ -558,6 +558,12 @@ const isLead = () => {
   const r = String(state.session?.role || "").toLowerCase().trim();
   return ["manager", "jefe", "jefa"].includes(r);
 };
+const isManagerOnly = () => {
+  const r = String(state.session?.role || "").toLowerCase().trim();
+  const n = String(state.session?.name || state.session?.nombre || "").toLowerCase().trim();
+  return r === "manager" || n.includes("moises") || n.includes("moisés");
+};
+window.isManagerOnly = isManagerOnly;
 const isReception = () => {
   const r = String(state.session?.role || "").toLowerCase().trim();
   return r === "recepcionista" || r === "mostrador";
@@ -2094,16 +2100,27 @@ function modulesView() {
   const userName = state.session?.nombre || state.session?.name || state.session?.username || 'Colaborador';
   const leadUser = isLead();
 
-  // Alerta de deudas vencidas para gerencia
+  // Alerta de deudas vencidas para gerencia (SOLO deudas reales con saldo pendiente)
   let debtAlert = '';
   if (leadUser) {
     const invoices = getStoredProvidersData();
     const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
     const overdueDebts = invoices.filter(inv => {
-      const vence = new Date(inv.fechaVencimiento);
+      const saldo = parseFloat(inv.saldoPendiente !== undefined ? inv.saldoPendiente : (Number(inv.montoTotal || 0) - Number(inv.abonado || 0)));
+      const estado = String(inv.estado || "").toLowerCase().trim();
+      // Si el saldo pendiente es 0 o está pagada/archivada, NUNCA es deuda vencida
+      if (saldo <= 0.01 || estado === "pagada" || estado === "archivada") {
+        return false;
+      }
+      const rawDate = inv.fechaVencimiento || inv.fechaEntrega;
+      if (!rawDate) return false;
+      const vence = new Date(rawDate);
+      if (isNaN(vence.getTime())) return false;
+      vence.setHours(0, 0, 0, 0);
       const diasParaVencer = Math.ceil((vence - hoy) / (1000 * 60 * 60 * 24));
-      // Alertar si: vencida, o vence en 5 días o menos, o tiene abono parcial y vence pronto
-      return (diasParaVencer <= 5 && inv.saldoPendiente > 0) || (inv.abonado > 0 && diasParaVencer <= 2);
+      // Alertar SOLO si tiene saldo pendiente real > 0 Y vence en 5 días o menos (o ya venció)
+      return diasParaVencer <= 5;
     });
     
     if (overdueDebts.length > 0) {
@@ -2113,7 +2130,7 @@ function modulesView() {
             <div style="font-size:24px;">🚨</div>
             <div style="flex:1;">
               <div style="font-weight:bold; font-size:14px;">¡ALERTA DE DEUDAS VENCIDAS!</div>
-              <div style="font-size:12px; opacity:0.9;">Tienes ${overdueDebts.length} cuenta(s) por pagar vencida(s), próximas a vencer o con abonos parciales pendientes.</div>
+              <div style="font-size:12px; opacity:0.9;">Tienes ${overdueDebts.length} cuenta(s) por pagar con saldo pendiente próximas a vencer o vencidas.</div>
             </div>
             <button type="button" onclick="navigate('providers')" style="background:white; color:#ef4444; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">Ver Deudas</button>
           </div>
@@ -3031,9 +3048,708 @@ function schedulesView() {
     </div>
   `;
 }
+// =========================================================================
+// MÓDULO FINANCIERO EJECUTIVO & P&L DE DIRECCIÓN (EXCLUSIVO MANAGER)
+// =========================================================================
+window.setManagerFinSubtab = function(tab) {
+  state.managerFinSubtab = tab;
+  if (typeof render === "function") render();
+};
+
+window.setQuotesFilter = function(f) {
+  state.quotesFilter = f;
+  if (typeof render === "function") render();
+};
+
+function renderManagerFinancesExecutiveSuite() {
+  const currentTf = state.financesTimeframe || 'month';
+  const subtab = state.managerFinSubtab || 'pl';
+  const now = new Date();
+  const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+
+  // 1. Consolidar todas las órdenes activas y terminadas no canceladas
+  const allOrders = state.data?.allOrders || [];
+  const finishedOrders = state.data?.finishedOrders || [];
+  const isNotCancelled = (o) => String(o.estado || "").toLowerCase().trim() !== "cancelado";
+  
+  const orderMap = new Map();
+  [...finishedOrders.filter(isNotCancelled), ...allOrders.filter(o => active(o) && isNotCancelled(o))].forEach(o => {
+    if (o && o.id) orderMap.set(String(o.id).trim(), o);
+  });
+  const consolidated = Array.from(orderMap.values());
+
+  // 2. Filtro temporal
+  const parseFinDate = (o) => safeParseDate(o.finProduccion || o.fechaCierre || o.entrega || o.creado);
+  const day = now.getDay();
+  const diffToMon = (day === 0 ? -6 : 1 - day);
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMon);
+  monday.setHours(0,0,0,0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23,59,59,999);
+
+  const timeFiltered = consolidated.filter(o => {
+    if (currentTf === 'all') return true;
+    const d = parseFinDate(o);
+    if (!d) return true;
+    if (currentTf === 'today') {
+      return d.toDateString() === now.toDateString();
+    } else if (currentTf === 'week') {
+      return d >= monday && d <= sunday;
+    } else if (currentTf === 'month') {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  });
+
+  // 3. Finanzas de órdenes
+  timeFiltered.forEach(o => {
+    o._fin = getOrderFinances(o);
+  });
+
+  let totalBilled = 0;       // Total Facturado
+  let totalCollected = 0;    // Cobrado Real (Caja/Bancos)
+  let totalReceivable = 0;   // Saldo en Calle (CxC)
+  let countQuoted = 0;
+  let countUnquoted = 0;
+  const methodTotals = {
+    "Punto de Venta": 0,
+    "Pago Móvil": 0,
+    "Efectivo USD": 0,
+    "Efectivo Bs": 0,
+    "Transferencia": 0,
+    "Otros": 0
+  };
+
+  const receivableOrders = [];
+  const unquotedOrders = [];
+  const quotedOrders = [];
+
+  timeFiltered.forEach(o => {
+    const f = o._fin;
+    if (f.total > 0) {
+      totalBilled += f.total;
+      countQuoted++;
+      quotedOrders.push(o);
+    } else {
+      countUnquoted++;
+      unquotedOrders.push(o);
+    }
+    totalCollected += f.abono;
+    totalReceivable += f.saldo;
+
+    if (f.saldo > 0.01) {
+      receivableOrders.push(o);
+    }
+
+    if (f.abono > 0) {
+      const met = String(f.metodo || "");
+      if (met.includes("Punto") || met.includes("POS") || met.includes("Tarjeta")) methodTotals["Punto de Venta"] += f.abono;
+      else if (met.includes("Móvil") || met.includes("Movil")) methodTotals["Pago Móvil"] += f.abono;
+      else if (met.includes("USD") || met.includes("Dólar") || met.includes("$")) methodTotals["Efectivo USD"] += f.abono;
+      else if (met.includes("Bs")) methodTotals["Efectivo Bs"] += f.abono;
+      else if (met.includes("Transferencia")) methodTotals["Transferencia"] += f.abono;
+      else methodTotals["Otros"] += f.abono;
+    }
+  });
+
+  const collectionRate = totalBilled > 0 ? ((totalCollected / totalBilled) * 100) : 100;
+  const avgTicket = countQuoted > 0 ? (totalBilled / countQuoted) : 0;
+
+  // 4. Insumos y Proveedores del período
+  const allInvoices = getStoredProvidersData();
+  const timeFilteredInvoices = allInvoices.filter(inv => {
+    if (currentTf === 'all') return true;
+    const rawDate = inv.fechaEntrega || inv.fechaVencimiento || inv.fechaRegistro || inv.fecha;
+    const d = safeParseDate(rawDate);
+    if (!d) return true;
+    if (currentTf === 'today') {
+      return d.toDateString() === now.toDateString();
+    } else if (currentTf === 'week') {
+      return d >= monday && d <= sunday;
+    } else if (currentTf === 'month') {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  });
+
+  let totalExpensesBilled = 0;  // Total Compras
+  let totalExpensesPaid = 0;    // Pagado a Proveedores
+  let totalExpensesPending = 0; // Deuda Proveedores
+  timeFilteredInvoices.forEach(inv => {
+    const tot = parseFloat(inv.montoTotal || 0);
+    const abo = parseFloat(inv.abonado || 0);
+    const sal = parseFloat(inv.saldoPendiente !== undefined ? inv.saldoPendiente : Math.max(0, tot - abo));
+    totalExpensesBilled += tot;
+    totalExpensesPaid += abo;
+    totalExpensesPending += sal;
+  });
+
+  // 5. Gastos Operativos / Caja Chica del período
+  const allExpenses = getStoredExpenses();
+  const timeFilteredExpenses = allExpenses.filter(exp => {
+    if (currentTf === 'all') return true;
+    const d = safeParseDate(exp.fecha);
+    if (!d) return true;
+    if (currentTf === 'today') {
+      return d.toDateString() === now.toDateString();
+    } else if (currentTf === 'week') {
+      return d >= monday && d <= sunday;
+    } else if (currentTf === 'month') {
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    return true;
+  });
+
+  let totalOperationalExpenses = 0;
+  timeFilteredExpenses.forEach(exp => {
+    totalOperationalExpenses += parseFloat(exp.montoUSD || 0);
+  });
+
+  // 6. UTILIDAD OPERATIVA NETA REAL (Cobrado Real - Compras Pagadas - Gastos Operativos)
+  const realNetProfit = totalCollected - totalExpensesPaid - totalOperationalExpenses;
+  const netMargin = totalCollected > 0 ? Math.round((realNetProfit / totalCollected) * 100) : 0;
+
+  // 7. Inventario
+  const inventoryItems = (typeof getStoredInventory === "function") ? getStoredInventory() : [];
+  let totalInventoryValuation = 0;
+  let lowStockCount = 0;
+  inventoryItems.forEach(it => {
+    const qty = parseFloat(it.cantidad || it.stock || 0);
+    const cost = parseFloat(it.costo || it.precioCosto || 0);
+    totalInventoryValuation += (qty * cost);
+    if (qty <= parseFloat(it.minimo || 5)) lowStockCount++;
+  });
+
+  // 8. Proveedores con Deuda Real
+  const realDebts = allInvoices.filter(inv => {
+    const s = parseFloat(inv.saldoPendiente !== undefined ? inv.saldoPendiente : (Number(inv.montoTotal || 0) - Number(inv.abonado || 0)));
+    const st = String(inv.estado || "").toLowerCase().trim();
+    return s > 0.01 && st !== "pagada" && st !== "archivada";
+  });
+  const totalRealDebtUSD = realDebts.reduce((sum, inv) => sum + parseFloat(inv.saldoPendiente || (inv.montoTotal - inv.abonado)), 0);
+
+  return `
+    <div style="background:var(--bg-card); padding:22px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md); animation:sicsFadeIn 0.3s ease-out; margin-bottom:40px;">
+      
+      <!-- ENCABEZADO GERENCIAL EXCLUSIVO MANAGER -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:16px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color:white; font-size:10px; font-weight:900; padding:3px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:0.5px;">
+              👑 MÓDULO EXCLUSIVO MANAGER
+            </span>
+            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">
+              Vista Privada de Moisés González
+            </span>
+          </div>
+          <h2 style="margin:6px 0 2px 0; font-size:23px; display:flex; align-items:center; gap:8px; color:var(--text-main);">
+            💼 Dirección Administrativa &amp; Control Financiero P&amp;L
+          </h2>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0;">
+            Supervisión integral de ingresos reales, costos, compras a proveedores, cotizaciones y caja chica sin intermediación.
+          </p>
+        </div>
+
+        <!-- Selector de Período -->
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('today')" style="font-size:11.5px; padding:6px 12px; border-radius:8px; ${currentTf === 'today' ? 'background:#059669; color:white; font-weight:bold;' : ''}">Hoy</button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('week')" style="font-size:11.5px; padding:6px 12px; border-radius:8px; ${currentTf === 'week' ? 'background:#0284c7; color:white; font-weight:bold;' : ''}">Esta Semana</button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('month')" style="font-size:11.5px; padding:6px 12px; border-radius:8px; ${currentTf === 'month' ? 'background:#9333ea; color:white; font-weight:bold;' : ''}">Este Mes</button>
+          <button type="button" class="secondary-button" onclick="window.setFinancesTimeframe('all')" style="font-size:11.5px; padding:6px 12px; border-radius:8px; ${currentTf === 'all' ? 'background:#d97706; color:white; font-weight:bold;' : ''}">Histórico Completo</button>
+        </div>
+      </div>
+
+      <!-- SUB-BARRA DE NAVEGACIÓN EJECUTIVA MANAGER -->
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; background:var(--bg-main); padding:8px 12px; border-radius:12px; border:1px solid var(--border-color);">
+        <button type="button" onclick="window.setManagerFinSubtab('pl')" style="background:${subtab === 'pl' ? '#10b981' : 'transparent'}; color:${subtab === 'pl' ? 'white' : 'var(--text-main)'}; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          📊 Estado de Resultados (P&amp;L)
+        </button>
+        <button type="button" onclick="window.setManagerFinSubtab('quotes')" style="background:${subtab === 'quotes' ? '#3b82f6' : 'transparent'}; color:${subtab === 'quotes' ? 'white' : 'var(--text-main)'}; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          🏷️ Control de Cotizaciones ${countUnquoted > 0 ? `<span style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:10px;">${countUnquoted} sin cotizar</span>` : ''}
+        </button>
+        <button type="button" onclick="window.setManagerFinSubtab('expenses')" style="background:${subtab === 'expenses' ? '#ef4444' : 'transparent'}; color:${subtab === 'expenses' ? 'white' : 'var(--text-main)'}; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          💸 Gastos Operativos &amp; Caja Chica (${timeFilteredExpenses.length})
+        </button>
+        <button type="button" onclick="window.setManagerFinSubtab('inventory')" style="background:${subtab === 'inventory' ? '#8b5cf6' : 'transparent'}; color:${subtab === 'inventory' ? 'white' : 'var(--text-main)'}; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          📦 Inventario Valorizado ${lowStockCount > 0 ? `<span style="background:#f59e0b; color:white; font-size:10px; padding:2px 6px; border-radius:10px;">${lowStockCount} bajo stock</span>` : ''}
+        </button>
+        <button type="button" onclick="window.setManagerFinSubtab('debts')" style="background:${subtab === 'debts' ? '#f59e0b' : 'transparent'}; color:${subtab === 'debts' ? 'white' : 'var(--text-main)'}; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          🚚 Deudas Reales Proveedores (${realDebts.length})
+        </button>
+        <button type="button" onclick="window.setManagerFinSubtab('all_orders')" style="background:${subtab === 'all_orders' ? '#6366f1' : 'transparent'}; color:${subtab === 'all_orders' ? 'white' : 'var(--text-main)'}; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+          📋 Auditoría de Pedidos (${timeFiltered.length})
+        </button>
+      </div>
+
+      <!-- CONTENIDO DEL SUBTAB SELECCIONADO -->
+      ${renderManagerSubtabContent(subtab, {
+        currentTf, currentTasa, totalBilled, totalCollected, totalReceivable, countQuoted, countUnquoted,
+        collectionRate, avgTicket, totalExpensesBilled, totalExpensesPaid, totalExpensesPending,
+        totalOperationalExpenses, realNetProfit, netMargin, timeFiltered, receivableOrders,
+        unquotedOrders, quotedOrders, methodTotals, timeFilteredExpenses, totalInventoryValuation,
+        lowStockCount, inventoryItems, realDebts, totalRealDebtUSD
+      })}
+    </div>
+  `;
+}
+
+function renderManagerSubtabContent(subtab, data) {
+  const {
+    currentTf, currentTasa, totalBilled, totalCollected, totalReceivable, countQuoted, countUnquoted,
+    collectionRate, avgTicket, totalExpensesBilled, totalExpensesPaid, totalExpensesPending,
+    totalOperationalExpenses, realNetProfit, netMargin, timeFiltered, receivableOrders,
+    unquotedOrders, quotedOrders, methodTotals, timeFilteredExpenses, totalInventoryValuation,
+    lowStockCount, inventoryItems, realDebts, totalRealDebtUSD
+  } = data;
+
+  // SUBTAB 1: P&L ESTADO DE RESULTADOS
+  if (subtab === 'pl') {
+    return `
+      <!-- BANNER DE FÓRMULA CLARA & TRANSPARENTE -->
+      <div style="background:rgba(16,185,129,0.08); border:1.5px solid #10b981; border-radius:12px; padding:14px 18px; margin-bottom:20px;">
+        <div style="font-size:11px; font-weight:800; color:#059669; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
+          💡 FÓRMULA DE LIQUIDEZ Y RENTABILIDAD REAL
+        </div>
+        <div style="font-size:15px; font-weight:bold; color:var(--text-main); line-height:1.4;">
+          Utilidad Real = Cobrado en Caja (<span style="color:#10b981;">+$${totalCollected.toFixed(2)}</span>) 
+          - Insumos Pagados (<span style="color:#f59e0b;">-$${totalExpensesPaid.toFixed(2)}</span>) 
+          - Gastos Operativos (<span style="color:#ef4444;">-$${totalOperationalExpenses.toFixed(2)}</span>) 
+          = <span style="color:${realNetProfit >= 0 ? '#10b981' : '#ef4444'}; font-size:18px;">${realNetProfit >= 0 ? '+' : ''}$${realNetProfit.toFixed(2)} USD</span>
+        </div>
+        <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+          Esta métrica representa el excedente líquido verdadero. No asume como ganancia cuentas por cobrar en la calle ni deudas pendientes de cancelar.
+        </div>
+      </div>
+
+      <!-- 6 TARJETAS FINANCIERAS CLARAS CON EXPLICACIÓN -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:22px;">
+        <div style="background:rgba(2,132,199,.08); border:1.5px solid #0284c7; padding:14px; border-radius:12px;">
+          <div style="font-size:11px; color:#0284c7; font-weight:800; text-transform:uppercase;">1. TOTAL FACTURADO</div>
+          <h2 style="color:#0284c7; margin:6px 0 2px 0; font-size:22px;">$${totalBilled.toFixed(2)}</h2>
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">${countQuoted} cotizados / ${timeFiltered.length} pedidos</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1.2;">Suma bruta cotizada a clientes (incluye cobrado y saldos).</div>
+        </div>
+
+        <div style="background:rgba(16,185,129,.08); border:1.5px solid #059669; padding:14px; border-radius:12px;">
+          <div style="font-size:11px; color:#059669; font-weight:800; text-transform:uppercase;">2. COBRADO REAL (CAJA)</div>
+          <h2 style="color:#059669; margin:6px 0 2px 0; font-size:22px;">$${totalCollected.toFixed(2)}</h2>
+          <div style="font-size:11px; color:#059669; font-weight:bold;">Tasa de Cobro: ${collectionRate.toFixed(1)}%</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1.2;">Dinero que verdaderamente ingresó a cuentas y gaveta.</div>
+        </div>
+
+        <div style="background:rgba(239,68,68,.08); border:1.5px solid #ef4444; padding:14px; border-radius:12px;">
+          <div style="font-size:11px; color:#ef4444; font-weight:800; text-transform:uppercase;">3. CUENTAS POR COBRAR (CxC)</div>
+          <h2 style="color:#ef4444; margin:6px 0 2px 0; font-size:22px;">$${totalReceivable.toFixed(2)}</h2>
+          <div style="font-size:11px; color:#ef4444; font-weight:bold;">${receivableOrders.length} clientes con deuda</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1.2;">Saldo en calle pendiente de liquidar por clientes.</div>
+        </div>
+
+        <div style="background:rgba(245,158,11,.08); border:1.5px solid #f59e0b; padding:14px; border-radius:12px;">
+          <div style="font-size:11px; color:#d97706; font-weight:800; text-transform:uppercase;">4. INSUMOS Y PROVEEDORES</div>
+          <h2 style="color:#d97706; margin:6px 0 2px 0; font-size:22px;">$${totalExpensesBilled.toFixed(2)}</h2>
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">Pagado: $${totalExpensesPaid.toFixed(2)} | Deuda: $${totalExpensesPending.toFixed(2)}</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1.2;">Compras a Blindac, Prodimarca, Américas, etc.</div>
+        </div>
+
+        <div style="background:rgba(239,68,68,.08); border:1.5px solid #dc2626; padding:14px; border-radius:12px;">
+          <div style="font-size:11px; color:#dc2626; font-weight:800; text-transform:uppercase;">5. GASTOS OPERATIVOS</div>
+          <h2 style="color:#dc2626; margin:6px 0 2px 0; font-size:22px;">$${totalOperationalExpenses.toFixed(2)}</h2>
+          <div style="font-size:11px; color:var(--text-muted); font-weight:600;">${timeFilteredExpenses.length} egresos caja chica</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1.2;">Fletes, reparaciones, consumibles y refrigerios.</div>
+        </div>
+
+        <div style="background:${realNetProfit >= 0 ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'}; border:2px solid ${realNetProfit >= 0 ? '#10b981' : '#ef4444'}; padding:14px; border-radius:12px;">
+          <div style="font-size:11px; color:${realNetProfit >= 0 ? '#10b981' : '#ef4444'}; font-weight:900; text-transform:uppercase;">6. UTILIDAD OPERATIVA NETA</div>
+          <h2 style="color:${realNetProfit >= 0 ? '#10b981' : '#ef4444'}; margin:6px 0 2px 0; font-size:24px;">${realNetProfit >= 0 ? '+' : ''}$${realNetProfit.toFixed(2)}</h2>
+          <div style="font-size:11px; color:${realNetProfit >= 0 ? '#10b981' : '#ef4444'}; font-weight:bold;">Margen Neto Real: ${netMargin}%</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1.2;">Remanente libre después de pagar insumos y gastos.</div>
+        </div>
+      </div>
+
+      <!-- DESGLOSE DE MÉTODOS DE PAGO Y CUENTAS POR COBRAR -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
+        
+        <!-- MÉTODOS DE PAGO COBRADOS -->
+        <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+          <h3 style="margin:0 0 12px 0; font-size:14px; display:flex; align-items:center; gap:8px;">
+            💳 Medios de Pago Recaudados
+          </h3>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${Object.entries(methodTotals).map(([met, amt]) => {
+              const pct = totalCollected > 0 ? Math.round((amt / totalCollected) * 100) : 0;
+              return `
+                <div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:2px;">
+                    <span style="font-weight:600;">${escapeHtml(met)}</span>
+                    <span><strong>$${amt.toFixed(2)}</strong> <small style="color:var(--text-muted);">(${pct}%)</small></span>
+                  </div>
+                  <div style="width:100%; height:7px; background:rgba(0,0,0,0.1); border-radius:4px; overflow:hidden;">
+                    <div style="width:${pct}%; height:100%; background:#10b981; border-radius:4px;"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <div style="margin-top:12px; font-size:11px; text-align:right; color:var(--text-muted);">
+            Equivalente en Bs: <strong>Bs. ${(totalCollected * currentTasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</strong>
+          </div>
+        </div>
+
+        <!-- CUENTAS POR COBRAR URGENTES CON BOTÓN DE WHATSAPP -->
+        <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:12px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0; font-size:14px; display:flex; align-items:center; gap:8px; color:#ef4444;">
+              🔴 Cuentas por Cobrar Pendientes (${receivableOrders.length})
+            </h3>
+            <span style="font-size:11px; font-weight:bold; color:#ef4444; background:rgba(239,68,68,0.1); padding:2px 6px; border-radius:6px;">
+              Total: $${totalReceivable.toFixed(2)}
+            </span>
+          </div>
+
+          <div style="max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+            ${receivableOrders.length > 0 ? receivableOrders.map(o => {
+              const f = o._fin;
+              const rawTel = String(o.telefono || "").replace(/[^0-9]/g, "");
+              const waTel = rawTel.startsWith("0") ? "58" + rawTel.substring(1) : (rawTel.length === 10 ? "58" + rawTel : rawTel);
+              const waMsg = `Hola ${o.cliente}, un saludo de Creaciones JJ. Le recordamos cordialmente que tiene un saldo pendiente de $${f.saldo.toFixed(2)} correspondiente a su pedido #${o.id} (${o.tipo}). ¡Quedamos a su orden!`;
+              return `
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center;">
+                  <div>
+                    <div style="font-weight:bold; font-size:12px;">${escapeHtml(o.cliente)} <small style="color:var(--text-muted); font-family:monospace;">(#${escapeHtml(o.id)})</small></div>
+                    <div style="font-size:11px; color:var(--text-muted);">${escapeHtml(o.tipo)} | Total: $${f.total.toFixed(2)} | Abonó: $${f.abono.toFixed(2)}</div>
+                  </div>
+                  <div style="text-align:right; display:flex; align-items:center; gap:8px;">
+                    <strong style="color:#ef4444; font-size:13px;">$${f.saldo.toFixed(2)}</strong>
+                    ${waTel ? `
+                      <a href="https://wa.me/${waTel}?text=${encodeURIComponent(waMsg)}" target="_blank" rel="noopener" style="background:#059669; color:white; padding:4px 8px; border-radius:6px; font-size:11px; text-decoration:none; font-weight:bold; display:inline-flex; align-items:center; gap:4px;" title="Cobrar por WhatsApp">
+                        📲 Cobrar
+                      </a>
+                    ` : ''}
+                    <button type="button" onclick="window.openQuickPaymentEdit('${escapeHtml(o.id)}')" style="background:#0284c7; color:white; border:none; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;" title="Registrar Cobro">
+                      💵 Abonar
+                    </button>
+                  </div>
+                </div>
+              `;
+            }).join('') : `
+              <div style="padding:20px; text-align:center; color:#10b981; font-size:12px; font-weight:bold;">
+                🎉 ¡Excelente! No hay clientes con saldo pendiente en este período.
+              </div>
+            `}
+          </div>
+        </div>
+
+      </div>
+    `;
+  }
+
+  // SUBTAB 2: CONTROL DE COTIZACIONES
+  if (subtab === 'quotes') {
+    const qFilter = state.quotesFilter || 'all';
+    let filteredQuotes = timeFiltered;
+    if (qFilter === 'unquoted') filteredQuotes = unquotedOrders;
+    else if (qFilter === 'quoted') filteredQuotes = quotedOrders;
+
+    return `
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; background:var(--bg-main); padding:10px 14px; border-radius:10px; border:1px solid var(--border-color);">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button type="button" onclick="window.setQuotesFilter('all')" style="font-size:12px; padding:6px 12px; border-radius:20px; border:none; cursor:pointer; ${qFilter === 'all' ? 'background:#3b82f6; color:white; font-weight:bold;' : 'background:var(--bg-card); color:var(--text-main);'}">
+              Todos los Trabajos (${timeFiltered.length})
+            </button>
+            <button type="button" onclick="window.setQuotesFilter('unquoted')" style="font-size:12px; padding:6px 12px; border-radius:20px; border:none; cursor:pointer; ${qFilter === 'unquoted' ? 'background:#ef4444; color:white; font-weight:bold;' : 'background:var(--bg-card); color:var(--text-main);'}">
+              ⚠️ Sin Cotizar / $0.00 (${countUnquoted})
+            </button>
+            <button type="button" onclick="window.setQuotesFilter('quoted')" style="font-size:12px; padding:6px 12px; border-radius:20px; border:none; cursor:pointer; ${qFilter === 'quoted' ? 'background:#10b981; color:white; font-weight:bold;' : 'background:var(--bg-card); color:var(--text-main);'}">
+              ✅ Cotizados (${countQuoted})
+            </button>
+          </div>
+          <div style="font-size:12px; color:var(--text-muted);">
+            Cartera Total: <strong style="color:#0284c7;">$${totalBilled.toFixed(2)}</strong> | Ticket Promedio: <strong>$${avgTicket.toFixed(2)}</strong>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+                <th style="padding:8px;">ID</th>
+                <th style="padding:8px;">Cliente & Teléfono</th>
+                <th style="padding:8px;">Tipo & Motivo</th>
+                <th style="padding:8px;">Responsable</th>
+                <th style="padding:8px; text-align:right;">Precio Cotizado</th>
+                <th style="padding:8px; text-align:right;">Abonado</th>
+                <th style="padding:8px; text-align:right;">Saldo</th>
+                <th style="padding:8px; text-align:center;">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredQuotes.map(o => {
+                const f = o._fin;
+                return `
+                  <tr style="border-bottom:1px solid var(--border-color); background:${f.total <= 0 ? 'rgba(239,68,68,0.04)' : 'transparent'};">
+                    <td style="padding:8px; font-weight:bold; font-family:monospace; color:var(--primary-color);">${escapeHtml(o.id)}</td>
+                    <td style="padding:8px;"><strong>${escapeHtml(o.cliente)}</strong> <br><small style="color:var(--text-muted);">${escapeHtml(o.telefono || '')}</small></td>
+                    <td style="padding:8px;">${escapeHtml(o.tipo)} <br><small style="color:var(--text-muted);">${escapeHtml(o.motivo || '-')}</small></td>
+                    <td style="padding:8px;"><span style="font-size:11px; background:rgba(0,0,0,0.08); padding:2px 6px; border-radius:4px;">${escapeHtml(o.responsable || 'Taller')}</span></td>
+                    <td style="padding:8px; text-align:right; font-weight:bold; font-size:13px; color:${f.total > 0 ? 'var(--text-main)' : '#ef4444'};">
+                      ${f.total > 0 ? '$' + f.total.toFixed(2) : '⚠️ Sin Precio'}
+                    </td>
+                    <td style="padding:8px; text-align:right; color:#10b981; font-weight:bold;">$${f.abono.toFixed(2)}</td>
+                    <td style="padding:8px; text-align:right; color:${f.saldo > 0 ? '#ef4444' : '#10b981'}; font-weight:bold;">$${f.saldo.toFixed(2)}</td>
+                    <td style="padding:8px; text-align:center;">
+                      <button type="button" onclick="window.openQuickQuoteModal('${escapeHtml(o.id)}')" style="background:#3b82f6; color:white; border:none; padding:5px 10px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">
+                        🏷️ ${f.total > 0 ? 'Editar Precio' : 'Cotizar Ahora'}
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('') || '<tr><td colspan="8" style="padding:24px; text-align:center; color:var(--text-muted);">No hay pedidos para este filtro.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // SUBTAB 3: GASTOS OPERATIVOS / CAJA CHICA
+  if (subtab === 'expenses') {
+    return `
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0; font-size:16px;">💸 Registro de Gastos Menores &amp; Caja Chica</h3>
+            <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">Fletes, compras de emergencia, refrigerios, mantenimiento de plotter y suministros menores.</p>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:6px 12px; border-radius:8px; text-align:right;">
+              <span style="font-size:10px; color:#ef4444; font-weight:bold; text-transform:uppercase;">TOTAL GASTOS PERÍODO:</span>
+              <strong style="color:#ef4444; font-size:14px; margin-left:6px;">$${totalOperationalExpenses.toFixed(2)} USD</strong>
+            </div>
+            <button type="button" onclick="window.openNewOperationalExpenseModal()" style="background:#ef4444; color:white; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              <i class="fas fa-plus-circle"></i> + Registrar Gasto
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+                <th style="padding:8px;">Fecha</th>
+                <th style="padding:8px;">Categoría</th>
+                <th style="padding:8px;">Concepto / Detalle</th>
+                <th style="padding:8px; text-align:right;">Monto ($ USD)</th>
+                <th style="padding:8px; text-align:right;">Monto (Bs)</th>
+                <th style="padding:8px;">Método Pago</th>
+                <th style="padding:8px;">Referencia</th>
+                <th style="padding:8px; text-align:center;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${timeFilteredExpenses.map(e => `
+                <tr style="border-bottom:1px solid var(--border-color);">
+                  <td style="padding:8px; font-weight:bold;">${escapeHtml(e.fecha)}</td>
+                  <td style="padding:8px;"><span style="background:rgba(0,0,0,0.06); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600;">${escapeHtml(e.categoria)}</span></td>
+                  <td style="padding:8px; font-weight:600;">${escapeHtml(e.concepto)}</td>
+                  <td style="padding:8px; text-align:right; font-weight:bold; color:#ef4444;">$${Number(e.montoUSD || 0).toFixed(2)}</td>
+                  <td style="padding:8px; text-align:right; color:var(--text-muted);">Bs. ${Number(e.montoBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
+                  <td style="padding:8px;">${escapeHtml(e.metodo || 'Efectivo USD')}</td>
+                  <td style="padding:8px; font-family:monospace; color:var(--text-muted);">${escapeHtml(e.referencia || '-')}</td>
+                  <td style="padding:8px; text-align:center;">
+                    <button type="button" onclick="window.deleteOperationalExpense('${escapeHtml(e.id)}')" style="background:transparent; border:none; color:#ef4444; cursor:pointer; font-size:13px;" title="Eliminar Gasto">🗑️</button>
+                  </td>
+                </tr>
+              `).join('') || '<tr><td colspan="8" style="padding:24px; text-align:center; color:var(--text-muted);">No hay gastos operativos registrados para este período.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // SUBTAB 4: INVENTARIO VALORIZADO
+  if (subtab === 'inventory') {
+    return `
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0; font-size:16px;">📦 Control de Stock &amp; Valor de Almacén</h3>
+            <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">Inversión inmovilizada en taller y alertas para reposición a proveedores.</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <div style="background:rgba(139,92,246,0.1); border:1px solid #8b5cf6; padding:6px 12px; border-radius:8px;">
+              <span style="font-size:10px; color:#8b5cf6; font-weight:bold; text-transform:uppercase;">VALOR TOTAL STOCK:</span>
+              <strong style="color:#8b5cf6; font-size:14px; margin-left:6px;">$${totalInventoryValuation.toFixed(2)} USD</strong>
+            </div>
+            <button type="button" onclick="navigate('inventory')" style="background:#8b5cf6; color:white; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">
+              Gestionar Inventario Completo ➔
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+                <th style="padding:8px;">Código</th>
+                <th style="padding:8px;">Insumo / Material</th>
+                <th style="padding:8px;">Categoría</th>
+                <th style="padding:8px; text-align:center;">Stock Actual</th>
+                <th style="padding:8px; text-align:right;">Costo Unit. ($)</th>
+                <th style="padding:8px; text-align:right;">Valor Total ($)</th>
+                <th style="padding:8px; text-align:center;">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${inventoryItems.map(it => {
+                const qty = parseFloat(it.cantidad || it.stock || 0);
+                const cost = parseFloat(it.costo || it.precioCosto || 0);
+                const sub = qty * cost;
+                const min = parseFloat(it.minimo || 5);
+                const isLow = qty <= min;
+                return `
+                  <tr style="border-bottom:1px solid var(--border-color); background:${isLow ? 'rgba(239,68,68,0.05)' : 'transparent'};">
+                    <td style="padding:8px; font-family:monospace; font-weight:bold;">${escapeHtml(it.codigo || it.id || '-')}</td>
+                    <td style="padding:8px; font-weight:bold;">${escapeHtml(it.nombre || it.descripcion)}</td>
+                    <td style="padding:8px; color:var(--text-muted);">${escapeHtml(it.categoria || 'Taller')}</td>
+                    <td style="padding:8px; text-align:center; font-weight:bold;">${qty} ${escapeHtml(it.unidad || 'und')}</td>
+                    <td style="padding:8px; text-align:right;">$${cost.toFixed(2)}</td>
+                    <td style="padding:8px; text-align:right; font-weight:bold;">$${sub.toFixed(2)}</td>
+                    <td style="padding:8px; text-align:center;">
+                      <span style="font-size:10px; font-weight:bold; padding:2px 8px; border-radius:10px; ${isLow ? 'background:rgba(239,68,68,0.15); color:#ef4444;' : 'background:rgba(16,185,129,0.15); color:#10b981;'}">
+                        ${isLow ? '⚠️ Reponer' : '✓ OK'}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              }).join('') || '<tr><td colspan="7" style="padding:24px; text-align:center; color:var(--text-muted);">No hay insumos registrados en el inventario.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // SUBTAB 5: DEUDAS REALES A PROVEEDORES
+  if (subtab === 'debts') {
+    return `
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0; font-size:16px; color:#f59e0b;">🚚 Cuentas por Pagar a Proveedores (Auditoría Real)</h3>
+            <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-muted);">Se muestran ÚNICAMENTE facturas y notas con saldo pendiente real mayor a $0.00.</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <div style="background:rgba(245,158,11,0.1); border:1px solid #f59e0b; padding:6px 12px; border-radius:8px;">
+              <span style="font-size:10px; color:#d97706; font-weight:bold; text-transform:uppercase;">DEUDA TOTAL REAL:</span>
+              <strong style="color:#d97706; font-size:14px; margin-left:6px;">$${totalRealDebtUSD.toFixed(2)} USD</strong>
+              <small style="color:var(--text-muted); margin-left:4px;">(Bs. ${(totalRealDebtUSD * currentTasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })})</small>
+            </div>
+            <button type="button" onclick="navigate('providers')" style="background:#f59e0b; color:white; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">
+              Módulo Proveedores Completo ➔
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+                <th style="padding:8px;">Proveedor</th>
+                <th style="padding:8px;">N° Nota / Factura</th>
+                <th style="padding:8px;">Fecha Entrega</th>
+                <th style="padding:8px;">Fecha Vencimiento</th>
+                <th style="padding:8px; text-align:right;">Monto Total</th>
+                <th style="padding:8px; text-align:right;">Abonado</th>
+                <th style="padding:8px; text-align:right;">Saldo Deuda</th>
+                <th style="padding:8px; text-align:center;">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${realDebts.map(inv => {
+                const s = parseFloat(inv.saldoPendiente !== undefined ? inv.saldoPendiente : (inv.montoTotal - inv.abonado));
+                return `
+                  <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:8px; font-weight:bold;">${escapeHtml(inv.proveedor)}</td>
+                    <td style="padding:8px; font-family:monospace;">${escapeHtml(inv.numeroNota || inv.numero || '-')}</td>
+                    <td style="padding:8px;">${escapeHtml(inv.fechaEntrega || '-')}</td>
+                    <td style="padding:8px; font-weight:bold; color:#ef4444;">${escapeHtml(inv.fechaVencimiento || '-')}</td>
+                    <td style="padding:8px; text-align:right;">$${Number(inv.montoTotal || 0).toFixed(2)}</td>
+                    <td style="padding:8px; text-align:right; color:#10b981;">$${Number(inv.abonado || 0).toFixed(2)}</td>
+                    <td style="padding:8px; text-align:right; font-weight:bold; font-size:13px; color:#ef4444;">$${s.toFixed(2)}</td>
+                    <td style="padding:8px; text-align:center;">
+                      <button type="button" onclick="window.openProviderInvoiceDetailModal('${escapeHtml(inv.id)}')" style="background:#10b981; color:white; border:none; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">
+                        💵 Ver / Abonar
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('') || '<tr><td colspan="8" style="padding:24px; text-align:center; color:#10b981; font-weight:bold;">🎉 ¡Cero Deudas! Todas las notas de proveedores están solventes al 100%.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // SUBTAB 6: ALL ORDERS
+  return `
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+            <th style="padding:8px;">ID</th>
+            <th style="padding:8px;">Cliente & Contacto</th>
+            <th style="padding:8px;">Trabajo / Motivo</th>
+            <th style="padding:8px;">Estado</th>
+            <th style="padding:8px; text-align:right;">Total ($)</th>
+            <th style="padding:8px; text-align:right;">Abonado ($)</th>
+            <th style="padding:8px; text-align:right;">Saldo ($)</th>
+            <th style="padding:8px; text-align:center;">Estatus Pago</th>
+            <th style="padding:8px; text-align:center;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${timeFiltered.map(o => {
+            const f = o._fin;
+            return `
+              <tr style="border-bottom:1px solid var(--border-color);">
+                <td style="padding:8px; font-weight:bold; font-family:monospace; color:var(--primary-color);">${escapeHtml(o.id)}</td>
+                <td style="padding:8px;"><strong>${escapeHtml(o.cliente)}</strong> <br><small style="color:var(--text-muted);">${escapeHtml(o.telefono || '')}</small></td>
+                <td style="padding:8px;">${escapeHtml(o.tipo)} <br><small style="color:var(--text-muted);">${escapeHtml(o.motivo || '-')}</small></td>
+                <td style="padding:8px;"><span style="font-size:10px; padding:2px 6px; border-radius:6px; background:rgba(0,0,0,0.06);">${escapeHtml(o.estado || 'Activo')}</span></td>
+                <td style="padding:8px; text-align:right; font-weight:bold;">${f.total > 0 ? '$' + f.total.toFixed(2) : '<span style="color:#ef4444;">Sin precio</span>'}</td>
+                <td style="padding:8px; text-align:right; color:#10b981; font-weight:bold;">$${f.abono.toFixed(2)}</td>
+                <td style="padding:8px; text-align:right; color:${f.saldo > 0 ? '#ef4444' : '#10b981'}; font-weight:bold;">$${f.saldo.toFixed(2)}</td>
+                <td style="padding:8px; text-align:center;">
+                  <span style="font-size:10px; font-weight:bold; padding:2px 6px; border-radius:8px; ${f.status === 'paid' ? 'background:rgba(16,185,129,0.15); color:#10b981;' : (f.status === 'partial' ? 'background:rgba(245,158,11,0.15); color:#d97706;' : (f.status === 'unquoted' ? 'background:rgba(107,114,128,0.15); color:#6b7280;' : 'background:rgba(239,68,68,0.15); color:#ef4444;'))}">
+                    ${f.status === 'paid' ? '🟢 Solvente' : (f.status === 'partial' ? '🟡 Saldo' : (f.status === 'unquoted' ? '⚪ Sin Cotizar' : '🔴 Por Cobrar'))}
+                  </span>
+                </td>
+                <td style="padding:8px; text-align:center;">
+                  <div style="display:flex; gap:4px; justify-content:center;">
+                    <button type="button" onclick="window.openQuickPaymentEdit('${escapeHtml(o.id)}')" style="background:#059669; color:white; border:none; padding:3px 6px; border-radius:4px; font-size:10.5px; font-weight:bold; cursor:pointer;">💵 Cobrar</button>
+                    <button type="button" onclick="window.generateDeliveryNote('${escapeHtml(o.id)}')" style="background:#4f46e5; color:white; border:none; padding:3px 6px; border-radius:4px; font-size:10.5px; cursor:pointer;">📄 Nota</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('') || '<tr><td colspan="9" style="padding:24px; text-align:center; color:var(--text-muted);">No hay pedidos para este filtro.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function financesView() {
   if (!isLead()) {
     return `<div class="empty"><strong>Acceso Restringido: Este módulo solo está disponible para Jefes y Managers.</strong></div>`;
+  }
+  if (isManagerOnly()) {
+    return renderManagerFinancesExecutiveSuite();
   }
 
   // 1. Consolidar todas las órdenes activas y terminadas no canceladas
@@ -4266,63 +4982,123 @@ function closeModal() {
   if (m) m.close();
 }
 
+function parseMoney(val) {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  let s = String(val).replace(/[^0-9.,-]/g, "").trim();
+  if (!s) return 0;
+  if (s.includes(",") && !s.includes(".")) {
+    s = s.replace(",", ".");
+  } else if (s.includes(",") && s.includes(".")) {
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      s = s.replace(/,/g, "");
+    }
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
 function getOrderFinances(order) {
   if (!order) return { total: 0, abono: 0, saldo: 0, metodo: "No especificado", status: "unquoted" };
   
-  const total = Number(order.costo || 0);
+  let total = parseMoney(order.costo || order.monto || order.total || order.precio || 0);
   let abono = 0;
+  let saldo = parseMoney(order.saldoPendiente !== undefined ? order.saldoPendiente : order.saldo);
   let metodo = "";
   
-  // 1. Atributos directos
-  if (order.abono !== undefined && order.abono !== null && !isNaN(Number(order.abono))) {
-    abono = Number(order.abono);
-  } else if (order.anticipo !== undefined && order.anticipo !== null && !isNaN(Number(order.anticipo))) {
-    abono = Number(order.anticipo);
+  // 1. Atributos directos en el objeto
+  if (order.abono !== undefined && order.abono !== null && order.abono !== "") {
+    abono = parseMoney(order.abono);
+  } else if (order.anticipo !== undefined && order.anticipo !== null && order.anticipo !== "") {
+    abono = parseMoney(order.anticipo);
+  } else if (order.montoPagado !== undefined && order.montoPagado !== null && order.montoPagado !== "") {
+    abono = parseMoney(order.montoPagado);
   }
   
   if (order.metodoPago || order.metodo_pago) {
     metodo = String(order.metodoPago || order.metodo_pago).trim();
   }
 
-  // 2. Extraer de notas si no están en propiedades
-  if (order.notas) {
-    const finTag = order.notas.match(/\[FINANZAS:[^\]]+\]/i);
+  const notas = String(order.notas || "");
+
+  // 2. Extraer de notas estructuradas
+  if (notas) {
+    // 2a. Tag oficial [FINANZAS: total=... | abono=... | saldo=... | metodo=...]
+    const finTag = notas.match(/\[FINANZAS:\s*([^\]]+)\]/i);
     if (finTag) {
-      const tagContent = finTag[0];
-      const abonoMatch = tagContent.match(/abono=([0-9.]+)/i);
-      if (abonoMatch && (!abono || abono === 0)) {
-        abono = parseFloat(abonoMatch[1]) || 0;
-      }
-      const metodoMatch = tagContent.match(/metodo=([^|\]]+)/i);
-      if (metodoMatch && !metodo) {
-        metodo = metodoMatch[1].trim();
-      }
-    } else {
-      if (!abono) {
-        const plainAbono = order.notas.match(/(?:Anticipo|Abono|Abonó):\s*\$?([0-9.]+)/i);
-        if (plainAbono) abono = parseFloat(plainAbono[1]) || 0;
-      }
-      if (!metodo) {
-        const plainMet = order.notas.match(/(?:Método|Metodo|Forma de pago):\s*([^\n\r,|]+)/i);
-        if (plainMet) metodo = plainMet[1].trim();
-      }
+      const tagContent = finTag[1];
+      const totM = tagContent.match(/total=([0-9.,]+)/i);
+      const aboM = tagContent.match(/abono=([0-9.,]+)/i);
+      const salM = tagContent.match(/saldo=([0-9.,]+)/i);
+      const metM = tagContent.match(/metodo=([^|\]]+)/i);
+      if (totM && (!total || total === 0)) total = parseMoney(totM[1]);
+      if (aboM && (!abono || abono === 0)) abono = parseMoney(aboM[1]);
+      if (salM) saldo = parseMoney(salM[1]);
+      if (metM && !metodo) metodo = metM[1].trim();
+    }
+    
+    // 2b. Tag Pedido JJ Express: 💰 Cobro: Total $XX.XX | Anticipo: $YY.YY | Saldo: $ZZ.ZZ | Metodo
+    const cobroMatch = notas.match(/(?:💰|⚡)?\s*Cobro:\s*Total\s*\$?([0-9.,]+)\s*\|\s*Anticipo:\s*\$?([0-9.,]+)\s*\|\s*Saldo:\s*\$?([0-9.,]+)(?:\s*\|\s*([^|\n\r]+))?/i);
+    if (cobroMatch) {
+      if (!total || total === 0) total = parseMoney(cobroMatch[1]);
+      if (!abono || abono === 0) abono = parseMoney(cobroMatch[2]);
+      saldo = parseMoney(cobroMatch[3]);
+      if (!metodo && cobroMatch[4]) metodo = cobroMatch[4].trim();
+    }
+
+    // 2c. Expresiones en texto libre
+    if (!total || total === 0) {
+      const plainTot = notas.match(/(?:Total|Costo|Monto|Precio):\s*\$?([0-9.,]+)/i);
+      if (plainTot) total = parseMoney(plainTot[1]);
+    }
+    if (!abono || abono === 0) {
+      const plainAbo = notas.match(/(?:Anticipo|Abono|Abonó|Canceló|Pagó):\s*\$?([0-9.,]+)/i);
+      if (plainAbo) abono = parseMoney(plainAbo[1]);
+    }
+    const plainSal = notas.match(/(?:Saldo|Resta|Pendiente):\s*\$?([0-9.,]+)/i);
+    if (plainSal) {
+      saldo = parseMoney(plainSal[1]);
+    }
+
+    // 2d. Detección de método de pago en texto si no está establecido
+    if (!metodo || metodo === "Pendiente" || metodo === "No especificado") {
+      if (/punto\s*de\s*venta|punto|pos|tarjeta|d[eé]bito|cr[eé]dito/i.test(notas)) metodo = "Punto de Venta";
+      else if (/pago\s*m[oó]vil|pagomovil|p\.m/i.test(notas)) metodo = "Pago Móvil";
+      else if (/efectivo\s*usd|d[oó]lar|\$|efectivo\s*\$/i.test(notas)) metodo = "Efectivo USD";
+      else if (/efectivo\s*bs|bol[ií]vares|efectivo\s*vef/i.test(notas)) metodo = "Efectivo Bs";
+      else if (/transferencia|banesco|mercantil|provincial|venezuela|bancamiga/i.test(notas)) metodo = "Transferencia";
+      else if (/biopago/i.test(notas)) metodo = "Biopago";
+      else if (/zelle/i.test(notas)) metodo = "Zelle";
     }
   }
 
-  let saldo = Math.max(0, total - abono);
+  // 3. Cálculo de Saldo y Resolución de Estado
+  if (saldo === undefined || isNaN(saldo)) {
+    saldo = Math.max(0, total - abono);
+  }
+
+  // Detectar si el texto declara pago completo o saldo cero
+  const isDeclaredPaid = /\[PAGADO\]|\[SOLVENTE\]|100%\s*PAGAD|100%\s*CANCEL|PAGO\s*COMPLETO|PAGO\s*TOTAL|SOLVENTE|CANCELAD[OA]|CANCEL[OÓ]\s*COMPLETO|SALDO:?\s*\$?0(?:\.00)?(?!\d)/i.test(notas);
+
   let status = "unquoted";
 
-  if (total <= 0) {
+  if (total <= 0 && abono <= 0) {
     status = "unquoted"; // Sin cotizar
-  } else if (saldo === 0 || /\[PAGADO\]|\[SOLVENTE\]|100%\s*PAGADO|PAGO\s*COMPLETO/i.test(order.notas || "")) {
+    saldo = 0;
+  } else if (total <= 0 && abono > 0) {
+    total = abono;
+    saldo = 0;
+    status = "paid";
+  } else if (isDeclaredPaid || saldo <= 0.01 || (abono >= total && total > 0)) {
     status = "paid"; // Solvente / 100% Pagado
     saldo = 0;
     if (abono === 0) abono = total;
-  } else if (abono > 0 && saldo > 0) {
-    status = "partial"; // Abonado parcial / Saldo pendiente
+  } else if (abono > 0 && saldo > 0.01) {
+    status = "partial"; // Abonado parcial
   } else {
-    // Total > 0 y abono 0
-    status = "pending"; // Totalmente por cobrar
+    status = "pending"; // Pendiente total
     saldo = total;
   }
 
@@ -4335,6 +5111,93 @@ function getOrderFinances(order) {
   };
 }
 window.getOrderFinances = getOrderFinances;
+
+// Cotización rápida en 1 clic
+window.openQuickQuoteModal = function(orderId) {
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) {
+    alert("No se encontró el pedido " + orderId);
+    return;
+  }
+  const f = getOrderFinances(order);
+  openModal(`
+    <div class="modal-head">
+      <h2>🏷️ Cotizar Pedido ${escapeHtml(order.id)}</h2>
+      <button class="close-button" data-action="close">×</button>
+    </div>
+    <div style="padding:16px; background:var(--bg-card);">
+      <div style="font-size:13px; margin-bottom:14px; background:var(--bg-main); padding:10px; border-radius:8px; border:1px solid var(--border-color);">
+        <div>👤 Cliente: <strong>${escapeHtml(order.cliente)}</strong></div>
+        <div>📦 Trabajo: <strong>${escapeHtml(order.tipo)}</strong> ${order.motivo ? `(${escapeHtml(order.motivo)})` : ''}</div>
+      </div>
+      <form id="quick-quote-form" class="form-grid" onsubmit="event.preventDefault(); window.saveQuickQuote('${escapeHtml(order.id)}');">
+        <label class="field">
+          <span class="field-label">Precio Total Cotizado ($):</span>
+          <input type="number" id="quick-quote-total" step="0.01" min="0.01" value="${f.total > 0 ? f.total : ''}" placeholder="Ej. 15.00" required style="font-size:16px; font-weight:bold; padding:8px;">
+        </label>
+        <label class="field">
+          <span class="field-label">Anticipo / Abono Recibido ($):</span>
+          <input type="number" id="quick-quote-abono" step="0.01" min="0" value="${f.abono > 0 ? f.abono : '0.00'}" placeholder="0.00" style="padding:8px;">
+        </label>
+        <label class="field">
+          <span class="field-label">Método de Cobro:</span>
+          <select id="quick-quote-metodo" style="padding:8px;">
+            <option value="Punto de Venta" ${f.metodo.includes("Punto") ? "selected" : ""}>💳 Punto de Venta (POS)</option>
+            <option value="Pago Móvil" ${f.metodo.includes("Móvil") || f.metodo.includes("Movil") ? "selected" : ""}>📱 Pago Móvil</option>
+            <option value="Efectivo USD" ${f.metodo.includes("USD") || f.metodo.includes("Dólar") ? "selected" : ""}>💵 Efectivo USD ($)</option>
+            <option value="Efectivo Bs" ${f.metodo.includes("Bs") ? "selected" : ""}>🇻🇪 Efectivo Bs</option>
+            <option value="Transferencia" ${f.metodo.includes("Transferencia") ? "selected" : ""}>🏦 Transferencia</option>
+            <option value="Zelle" ${f.metodo.includes("Zelle") ? "selected" : ""}>🇺🇸 Zelle</option>
+            <option value="Biopago" ${f.metodo.includes("Biopago") ? "selected" : ""}>👆 Biopago</option>
+          </select>
+        </label>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+          <button type="button" class="secondary-button" data-action="close">Cancelar</button>
+          <button type="submit" class="primary-button" style="background:#10b981; font-weight:bold;">Guardar Cotización</button>
+        </div>
+      </form>
+    </div>
+  `);
+};
+
+window.saveQuickQuote = async function(orderId) {
+  const tot = parseFloat(document.getElementById("quick-quote-total")?.value || 0);
+  const abo = parseFloat(document.getElementById("quick-quote-abono")?.value || 0);
+  const met = document.getElementById("quick-quote-metodo")?.value || "Efectivo USD";
+  if (tot <= 0) {
+    alert("Por favor ingresa un precio válido.");
+    return;
+  }
+  const sal = Math.max(0, tot - abo);
+  const finTag = `[FINANZAS: total=${tot.toFixed(2)} | abono=${abo.toFixed(2)} | saldo=${sal.toFixed(2)} | metodo=${met}]`;
+  
+  const allTarget = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || []), ...(state.data?.myOrders || [])];
+  const order = allTarget.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) return;
+
+  let currentNotas = String(order.notas || "");
+  let newNotas = currentNotas.includes("[FINANZAS:") ? currentNotas.replace(/\[FINANZAS:[^\]]+\]/i, finTag) : (finTag + "\n" + currentNotas);
+
+  try {
+    await api("profile_save_cost", { id: orderId, costo: tot });
+    await api("profile_update_order", { id: orderId, changes: { notas: newNotas } });
+    allTarget.forEach(o => {
+      if (String(o.id).trim() === String(orderId).trim()) {
+        o.costo = tot;
+        o.abono = abo;
+        o.metodoPago = met;
+        o.notas = newNotas;
+        o._fin = getOrderFinances(o);
+      }
+    });
+    showToast(`✅ Pedido ${orderId} cotizado: $${tot.toFixed(2)}`);
+    closeModal();
+    if (typeof render === "function") render();
+  } catch (err) {
+    alert("Error al guardar cotización: " + err.message);
+  }
+};
 
 function detail(order) {
   state.selectedOrder = order;
@@ -10334,6 +11197,140 @@ function saveStoredCashCloses(list) {
   if (state.data) state.data.cashCloses = cleanList;
 }
 
+// =========================================================================
+// GESTOR DE GASTOS OPERATIVOS / CAJA CHICA (EXCLUSIVO MANAGER)
+// =========================================================================
+function getStoredExpenses() {
+  const cached = store.get("pp_operational_expenses", null);
+  if (cached && Array.isArray(cached)) return cached;
+  return [];
+}
+function saveStoredExpenses(list) {
+  const clean = Array.isArray(list) ? list : [];
+  store.set("pp_operational_expenses", clean);
+}
+
+window.calcExpBs = function(usdVal) {
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const el = document.getElementById("exp-monto-bs");
+  if (el) el.value = (parseFloat(usdVal || 0) * tasa).toFixed(2);
+};
+
+window.calcExpUSD = function(bsVal) {
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const el = document.getElementById("exp-monto-usd");
+  if (el) el.value = (parseFloat(bsVal || 0) / (tasa || 1)).toFixed(2);
+};
+
+window.openNewOperationalExpenseModal = function() {
+  openModal(`
+    <div class="modal-head">
+      <h2>💸 Registrar Gasto Operativo / Caja Chica</h2>
+      <button class="close-button" data-action="close">×</button>
+    </div>
+    <form id="expense-form" class="form-grid" style="padding:16px; background:var(--bg-card);" onsubmit="event.preventDefault(); window.saveOperationalExpenseForm();">
+      <div class="form-inline" style="gap:8px;">
+        <label class="field" style="flex:1;">
+          <span class="field-label">Fecha:</span>
+          <input type="date" id="exp-fecha" value="${new Date().toISOString().split('T')[0]}" required>
+        </label>
+        <label class="field" style="flex:1.5;">
+          <span class="field-label">Categoría de Gasto:</span>
+          <select id="exp-categoria" required>
+            <option value="Flete / Encomienda">🚚 Flete / Encomienda / Delivery</option>
+            <option value="Insumos Menores">✂️ Insumos Menores / Papelería Taller</option>
+            <option value="Mantenimiento Equipos">🔧 Mantenimiento / Plotter / Impresora</option>
+            <option value="Refrigerios / Comida">☕ Refrigerios / Agua / Alimentación</option>
+            <option value="Servicios / Electricidad / Internet">⚡ Servicios / Internet / Luz</option>
+            <option value="Otro Gasto Operativo">📦 Otro Gasto Operativo</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">Concepto / Detalle del Gasto:</span>
+        <input type="text" id="exp-concepto" placeholder="Ej. Envío encomienda Zoom, cinta doble faz, tinta negra..." required>
+      </label>
+
+      <div class="form-inline" style="gap:8px;">
+        <label class="field" style="flex:1;">
+          <span class="field-label">Monto ($ USD):</span>
+          <input type="number" id="exp-monto-usd" step="0.01" min="0.01" placeholder="0.00" required oninput="window.calcExpBs(this.value)">
+        </label>
+        <label class="field" style="flex:1;">
+          <span class="field-label">Monto Equivalente (Bs):</span>
+          <input type="number" id="exp-monto-bs" step="0.01" min="0" placeholder="0.00" oninput="window.calcExpUSD(this.value)">
+        </label>
+      </div>
+
+      <div class="form-inline" style="gap:8px;">
+        <label class="field" style="flex:1;">
+          <span class="field-label">Método de Pago Utilizado:</span>
+          <select id="exp-metodo">
+            <option value="Efectivo USD">💵 Efectivo USD (Gaveta Caja Chica)</option>
+            <option value="Efectivo Bs">🇻🇪 Efectivo Bs (Gaveta)</option>
+            <option value="Pago Móvil">📱 Pago Móvil</option>
+            <option value="Punto de Venta">💳 Tarjeta / Punto</option>
+            <option value="Transferencia">🏦 Transferencia Bancaria</option>
+          </select>
+        </label>
+        <label class="field" style="flex:1;">
+          <span class="field-label">Referencia / Comprobante (Opcional):</span>
+          <input type="text" id="exp-referencia" placeholder="N° Referencia o factura">
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <button type="button" class="secondary-button" data-action="close">Cancelar</button>
+        <button type="submit" class="primary-button" style="background:#ef4444; font-weight:bold;">Guardar Gasto</button>
+      </div>
+    </form>
+  `);
+};
+
+window.saveOperationalExpenseForm = function() {
+  const fecha = document.getElementById("exp-fecha")?.value || new Date().toISOString().split('T')[0];
+  const categoria = document.getElementById("exp-categoria")?.value || "Otro Gasto Operativo";
+  const concepto = document.getElementById("exp-concepto")?.value?.trim() || "Gasto Operativo";
+  const montoUSD = parseFloat(document.getElementById("exp-monto-usd")?.value || 0);
+  const montoBs = parseFloat(document.getElementById("exp-monto-bs")?.value || 0);
+  const metodo = document.getElementById("exp-metodo")?.value || "Efectivo USD";
+  const ref = document.getElementById("exp-referencia")?.value?.trim() || "";
+
+  if (montoUSD <= 0 && montoBs <= 0) {
+    alert("Por favor ingresa un monto válido.");
+    return;
+  }
+
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const newExp = {
+    id: "EXP-" + Date.now(),
+    fecha,
+    categoria,
+    concepto,
+    montoUSD: montoUSD > 0 ? montoUSD : (montoBs / (tasa || 1)),
+    montoBs: montoBs > 0 ? montoBs : (montoUSD * tasa),
+    metodo,
+    referencia: ref,
+    registradoPor: state.session?.name || "Gerencia"
+  };
+
+  const list = getStoredExpenses();
+  list.unshift(newExp);
+  saveStoredExpenses(list);
+  showToast("✅ Gasto operativo registrado con éxito.");
+  closeModal();
+  if (typeof render === "function") render();
+};
+
+window.deleteOperationalExpense = function(id) {
+  if (!confirm("¿Deseas eliminar este registro de gasto?")) return;
+  const list = getStoredExpenses().filter(e => String(e.id) !== String(id));
+  saveStoredExpenses(list);
+  showToast("🗑️ Gasto eliminado.");
+  if (typeof render === "function") render();
+};
+
 window.editCashClose = function(cashId) {
   const closes = getStoredCashCloses();
   const close = closes.find(c => c.id === cashId);
@@ -10497,11 +11494,493 @@ window.editProviderAbono = function(invoiceId, abonoIndex) {
   });
 };
 
-function cashView() {
-  if (!isLead()) {
-    return `<div style="text-align:center; padding:50px; color:#ef4444;"><h2>🔒 Acceso Restringido</h2><p>Este módulo es exclusivo para Gerencia y Jefes.</p></div>`;
+// =========================================================================
+// TERMINAL DE CIERRE DE CAJA DIGITAL & SINCRONIZACIÓN POS (EXCLUSIVO MANAGER)
+// =========================================================================
+window.setManagerCashMode = function(mode) {
+  state.managerCashMode = mode;
+  if (typeof render === "function") render();
+};
+
+window.onDigitalCashDateChange = function(d) {
+  state.digitalCashDate = d;
+  if (typeof render === "function") render();
+};
+
+window.onDigitalCashShiftChange = function(s) {
+  state.digitalCashShift = s;
+  if (typeof render === "function") render();
+};
+
+window.updateDrawerBill = function(field, val) {
+  if (!state.drawerCount) state.drawerCount = { b100:0, b50:0, b20:0, b10:0, b5:0, b1:0, coins:0, bs:0, posLote:'', posVoucher:0, pmVerified:0, obs:'' };
+  state.drawerCount[field] = parseFloat(val) || (field === 'posLote' ? String(val) : 0);
+  
+  // Recalcular en vivo sin recargar pantalla completa para no perder foco
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const b100 = parseFloat(document.getElementById("drawer-b100")?.value || 0);
+  const b50 = parseFloat(document.getElementById("drawer-b50")?.value || 0);
+  const b20 = parseFloat(document.getElementById("drawer-b20")?.value || 0);
+  const b10 = parseFloat(document.getElementById("drawer-b10")?.value || 0);
+  const b5 = parseFloat(document.getElementById("drawer-b5")?.value || 0);
+  const b1 = parseFloat(document.getElementById("drawer-b1")?.value || 0);
+  const coins = parseFloat(document.getElementById("drawer-coins")?.value || 0);
+  const totalUSDCounted = (b100 * 100) + (b50 * 50) + (b20 * 20) + (b10 * 10) + (b5 * 5) + (b1 * 1) + coins;
+  
+  const elCountedUSD = document.getElementById("drawer-total-usd-disp");
+  if (elCountedUSD) elCountedUSD.textContent = '$' + totalUSDCounted.toFixed(2);
+
+  const posVoucher = parseFloat(document.getElementById("drawer-pos-voucher")?.value || 0);
+  const pmVerified = parseFloat(document.getElementById("drawer-pm-verified")?.value || 0);
+  const bsCounted = parseFloat(document.getElementById("drawer-bs-counted")?.value || 0);
+  const bsUSD = bsCounted / (tasa || 1);
+
+  const expectedUSD = parseFloat(document.getElementById("hidden-expected-total-usd")?.value || 0);
+  const declaredUSD = totalUSDCounted + posVoucher + pmVerified + bsUSD;
+  const diffUSD = declaredUSD - expectedUSD;
+
+  const elDeclared = document.getElementById("disp-declared-total-usd");
+  if (elDeclared) elDeclared.textContent = '$' + declaredUSD.toFixed(2);
+
+  const elDiff = document.getElementById("disp-cash-difference");
+  if (elDiff) {
+    if (Math.abs(diffUSD) <= 0.05) {
+      elDiff.innerHTML = '<span style="color:#10b981; font-weight:900;">🟢 ¡CAJA CUADRADA EXACTA! (Diferencia: $0.00)</span>';
+    } else if (diffUSD > 0.05) {
+      elDiff.innerHTML = `<span style="color:#0284c7; font-weight:900;">🔵 SOBRANTE EN CAJA: +$${diffUSD.toFixed(2)} USD (Bs. ${(diffUSD * tasa).toFixed(2)})</span>`;
+    } else {
+      elDiff.innerHTML = `<span style="color:#ef4444; font-weight:900;">🔴 FALTANTE EN CAJA: -$${Math.abs(diffUSD).toFixed(2)} USD (Bs. ${(Math.abs(diffUSD) * tasa).toFixed(2)})</span>`;
+    }
+  }
+};
+
+function renderManagerDigitalCashRegister() {
+  const mode = state.managerCashMode || 'digital';
+  const closes = getStoredCashCloses();
+  const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const selectedDate = state.digitalCashDate || new Date().toISOString().split('T')[0];
+  const selectedShift = state.digitalCashShift || 'Tarde (1:00 PM - 8:00 PM)';
+
+  // Si el manager prefiere ver la planilla tradicional
+  if (mode === 'sheets') {
+    return renderStandardCashView();
   }
 
+  // Escanear ventas reales registradas en el sistema para esta fecha
+  const allOrders = [...(state.data?.finishedOrders || []), ...(state.data?.allOrders || [])];
+  const isDateMatch = (o) => {
+    const d1 = safeParseDate(o.fechaCierre || o.finProduccion || o.entrega || o.creado);
+    if (d1 && d1.toISOString().split('T')[0] === selectedDate) return true;
+    const notas = String(o.notas || "");
+    if (notas.includes(selectedDate)) return true;
+    return false;
+  };
+
+  const dayOrders = allOrders.filter(isDateMatch);
+
+  let autoPuntoUSD = 0;
+  let autoPagoMovilUSD = 0;
+  let autoEfectivoUSD = 0;
+  let autoEfectivoBsUSD = 0;
+  let autoTransfUSD = 0;
+  let orderCount = 0;
+
+  dayOrders.forEach(o => {
+    const f = getOrderFinances(o);
+    if (f.abono > 0) {
+      orderCount++;
+      const met = String(f.metodo || "");
+      if (met.includes("Punto") || met.includes("POS") || met.includes("Tarjeta")) {
+        autoPuntoUSD += f.abono;
+      } else if (met.includes("Móvil") || met.includes("Movil")) {
+        autoPagoMovilUSD += f.abono;
+      } else if (met.includes("USD") || met.includes("Dólar") || met.includes("$")) {
+        autoEfectivoUSD += f.abono;
+      } else if (met.includes("Bs")) {
+        autoEfectivoBsUSD += f.abono;
+      } else if (met.includes("Transferencia")) {
+        autoTransfUSD += f.abono;
+      } else {
+        autoPuntoUSD += f.abono; // Default a POS
+      }
+    }
+  });
+
+  const autoTotalUSD = autoPuntoUSD + autoPagoMovilUSD + autoEfectivoUSD + autoEfectivoBsUSD + autoTransfUSD;
+  const autoTotalBs = autoTotalUSD * currentTasa;
+
+  if (!state.drawerCount) {
+    state.drawerCount = { b100:0, b50:0, b20:0, b10:0, b5:0, b1:0, coins:0, bs: (autoEfectivoBsUSD * currentTasa), posLote:'', posVoucher: autoPuntoUSD, pmVerified: autoPagoMovilUSD, obs:'' };
+  }
+  const dc = state.drawerCount;
+  const countedUSD = (dc.b100 * 100) + (dc.b50 * 50) + (dc.b20 * 20) + (dc.b10 * 10) + (dc.b5 * 5) + (dc.b1 * 1) + (dc.coins || 0);
+  const posVal = dc.posVoucher !== undefined ? dc.posVoucher : autoPuntoUSD;
+  const pmVal = dc.pmVerified !== undefined ? dc.pmVerified : autoPagoMovilUSD;
+  const bsUSD = (dc.bs || 0) / (currentTasa || 1);
+  const declaredTotalUSD = countedUSD + posVal + pmVal + bsUSD + autoTransfUSD;
+  const diffUSD = declaredTotalUSD - autoTotalUSD;
+
+  return `
+    <div style="max-width:1150px; margin:0 auto; padding-bottom:50px; animation:sicsFadeIn 0.3s ease-out;">
+      
+      <!-- ENCABEZADO GERENCIAL & SELECTOR DE MODO -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:16px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; font-size:10px; font-weight:900; padding:3px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:0.5px;">
+              ⚡ CIERRE DIGITAL &amp; SINCRONIZACIÓN POS
+            </span>
+            <span style="font-size:12px; color:var(--text-muted); font-weight:600;">
+              Creaciones JJ · Panel de Cuadre
+            </span>
+          </div>
+          <h1 style="font-size:22px; margin:6px 0 2px 0; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-cash-register" style="color:#10b981;"></i> Terminal de Cierre de Caja Digital
+          </h1>
+          <p style="font-size:12.5px; color:var(--text-muted); margin:0;">
+            Reconciliación sin papel: detecta cobros del sistema, cuadra el lote del punto de venta y cuenta el efectivo de gaveta en tiempo real.
+          </p>
+        </div>
+
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" onclick="window.setManagerCashMode('sheets')" style="background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); padding:8px 12px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">
+            📄 Ver Historial Tradicional
+          </button>
+        </div>
+      </div>
+
+      <!-- BARRA DE FECHA, TURNO Y TASA BCV -->
+      <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px 18px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div>
+            <label style="font-size:11px; font-weight:bold; color:var(--text-muted); display:block; margin-bottom:2px;">FECHA DE CIERRE:</label>
+            <input type="date" value="${selectedDate}" onchange="window.onDigitalCashDateChange(this.value)" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-weight:bold; font-size:12px;">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:bold; color:var(--text-muted); display:block; margin-bottom:2px;">TURNO DE CAJA:</label>
+            <select onchange="window.onDigitalCashShiftChange(this.value)" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-main); color:var(--text-main); font-weight:bold; font-size:12px;">
+              <option value="Tarde (1:00 PM - 8:00 PM)" ${selectedShift.includes("Tarde") ? "selected" : ""}>🌆 Turno Tarde (1:00 PM - 8:00 PM)</option>
+              <option value="Mañana (Apertura - 1:00 PM)" ${selectedShift.includes("Mañana") ? "selected" : ""}>🌅 Turno Mañana (Apertura - 1:00 PM)</option>
+              <option value="Jornada Completa" ${selectedShift.includes("Completa") ? "selected" : ""}>🌟 Jornada Completa (Día)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="text-align:right;">
+            <div style="font-size:11px; color:#10b981; font-weight:800; text-transform:uppercase;">TASA BCV OFICIAL:</div>
+            <div style="font-size:14px; font-weight:bold; color:var(--text-main);">Bs. ${currentTasa.toFixed(2)} / $</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTO-DETECCIÓN DE VENTAS DEL SISTEMA VS DECLARADO EN GAVETA/POS -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:18px; margin-bottom:22px;">
+        
+        <!-- COLUMNA 1: VENTAS DETECTADAS EN SISTEMA -->
+        <div style="background:var(--bg-card); border:1.5px solid #0284c7; border-radius:12px; padding:18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border-color); padding-bottom:8px;">
+            <h3 style="margin:0; font-size:15px; color:#0284c7; display:flex; align-items:center; gap:6px;">
+              💻 1. Cobros en Sistema (${orderCount} pedidos)
+            </h3>
+            <span style="font-size:11px; background:rgba(2,132,199,0.15); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:bold;">
+              Auditado Auto
+            </span>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px; font-size:13px;">
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border-color);">
+              <span>💳 Punto de Venta (POS):</span>
+              <strong>$${autoPuntoUSD.toFixed(2)} <small style="color:var(--text-muted);">(Bs. ${(autoPuntoUSD * currentTasa).toLocaleString('es-VE')})</small></strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border-color);">
+              <span>📱 Pago Móvil:</span>
+              <strong>$${autoPagoMovilUSD.toFixed(2)} <small style="color:var(--text-muted);">(Bs. ${(autoPagoMovilUSD * currentTasa).toLocaleString('es-VE')})</small></strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border-color);">
+              <span>💵 Efectivo USD ($):</span>
+              <strong style="color:#10b981;">$${autoEfectivoUSD.toFixed(2)}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border-color);">
+              <span>🇻🇪 Efectivo Bs:</span>
+              <strong>$${autoEfectivoBsUSD.toFixed(2)} <small style="color:var(--text-muted);">(Bs. ${(autoEfectivoBsUSD * currentTasa).toLocaleString('es-VE')})</small></strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border-color);">
+              <span>🏦 Transferencias / Otros:</span>
+              <strong>$${autoTransfUSD.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          <div style="margin-top:16px; background:rgba(2,132,199,0.08); padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:bold; font-size:13px; color:#0284c7;">TOTAL ESPERADO:</span>
+            <div style="text-align:right;">
+              <strong style="font-size:18px; color:#0284c7;">$${autoTotalUSD.toFixed(2)} USD</strong>
+              <div style="font-size:11px; color:var(--text-muted);">Bs. ${autoTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+          <input type="hidden" id="hidden-expected-total-usd" value="${autoTotalUSD}">
+        </div>
+
+        <!-- COLUMNA 2: CONTEO FÍSICO EN GAVETA & VOUCHER POS -->
+        <div style="background:var(--bg-card); border:1.5px solid #10b981; border-radius:12px; padding:18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border-color); padding-bottom:8px;">
+            <h3 style="margin:0; font-size:15px; color:#10b981; display:flex; align-items:center; gap:6px;">
+              🧮 2. Arqueo Físico &amp; Cierre de Terminal
+            </h3>
+            <span style="font-size:11px; background:rgba(16,185,129,0.15); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:bold;">
+              En Gaveta
+            </span>
+          </div>
+
+          <!-- Sincronización Lote POS -->
+          <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:8px; padding:10px; margin-bottom:10px;">
+            <div style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">💳 Cierre Terminal Punto de Venta (POS):</div>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="drawer-pos-lote" placeholder="N° Lote (ej. 142)" value="${escapeHtml(dc.posLote || '')}" oninput="window.updateDrawerBill('posLote', this.value)" style="flex:1; padding:6px; border:1px solid var(--border-color); border-radius:6px; font-size:12px;">
+              <input type="number" id="drawer-pos-voucher" step="0.01" min="0" placeholder="Monto Voucher ($)" value="${dc.posVoucher !== undefined ? dc.posVoucher : autoPuntoUSD.toFixed(2)}" oninput="window.updateDrawerBill('posVoucher', this.value)" style="flex:1.5; padding:6px; border:1px solid var(--border-color); border-radius:6px; font-size:12px; font-weight:bold; color:#0284c7;">
+            </div>
+          </div>
+
+          <!-- Pago Móvil Verificado -->
+          <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:8px; padding:10px; margin-bottom:10px;">
+            <div style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">📱 Pago Móvil Verificado en Banco ($):</div>
+            <input type="number" id="drawer-pm-verified" step="0.01" min="0" value="${dc.pmVerified !== undefined ? dc.pmVerified : autoPagoMovilUSD.toFixed(2)}" oninput="window.updateDrawerBill('pmVerified', this.value)" style="width:100%; padding:6px; border:1px solid var(--border-color); border-radius:6px; font-size:12px; font-weight:bold;">
+          </div>
+
+          <!-- Arqueo de Dólares Efectivo por Billetes -->
+          <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:8px; padding:10px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:11px; font-weight:bold; color:#10b981; text-transform:uppercase;">💵 Conteo Billetes USD ($):</span>
+              <strong id="drawer-total-usd-disp" style="color:#10b981; font-size:14px;">$${countedUSD.toFixed(2)}</strong>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; font-size:11px;">
+              <div>$100: <input type="number" id="drawer-b100" min="0" value="${dc.b100 || 0}" oninput="window.updateDrawerBill('b100', this.value)" style="width:45px; padding:3px; border-radius:4px; border:1px solid var(--border-color);"></div>
+              <div>$50: <input type="number" id="drawer-b50" min="0" value="${dc.b50 || 0}" oninput="window.updateDrawerBill('b50', this.value)" style="width:45px; padding:3px; border-radius:4px; border:1px solid var(--border-color);"></div>
+              <div>$20: <input type="number" id="drawer-b20" min="0" value="${dc.b20 || 0}" oninput="window.updateDrawerBill('b20', this.value)" style="width:45px; padding:3px; border-radius:4px; border:1px solid var(--border-color);"></div>
+              <div>$10: <input type="number" id="drawer-b10" min="0" value="${dc.b10 || 0}" oninput="window.updateDrawerBill('b10', this.value)" style="width:45px; padding:3px; border-radius:4px; border:1px solid var(--border-color);"></div>
+              <div>$5: <input type="number" id="drawer-b5" min="0" value="${dc.b5 || 0}" oninput="window.updateDrawerBill('b5', this.value)" style="width:45px; padding:3px; border-radius:4px; border:1px solid var(--border-color);"></div>
+              <div>$1: <input type="number" id="drawer-b1" min="0" value="${dc.b1 || 0}" oninput="window.updateDrawerBill('b1', this.value)" style="width:45px; padding:3px; border-radius:4px; border:1px solid var(--border-color);"></div>
+            </div>
+            <div style="margin-top:6px; font-size:11px;">
+              Sencillo / Monedas ($): <input type="number" id="drawer-coins" step="0.01" min="0" value="${dc.coins || 0}" oninput="window.updateDrawerBill('coins', this.value)" style="width:65px; padding:3px; border-radius:4px; border:1px solid var(--border-color);">
+            </div>
+          </div>
+
+          <!-- Efectivo en Bolívares Físico -->
+          <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:8px; padding:10px;">
+            <div style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">🇻🇪 Efectivo Bs en Gaveta:</div>
+            <input type="number" id="drawer-bs-counted" step="0.01" min="0" value="${dc.bs !== undefined ? dc.bs : (autoEfectivoBsUSD * currentTasa).toFixed(2)}" oninput="window.updateDrawerBill('bs', this.value)" style="width:100%; padding:6px; border:1px solid var(--border-color); border-radius:6px; font-size:12px; font-weight:bold;">
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- TERMÓMETRO DE CUADRE EN TIEMPO REAL & DIFERENCIA -->
+      <div style="background:var(--bg-card); border:2px solid ${Math.abs(diffUSD) <= 0.05 ? '#10b981' : (diffUSD > 0.05 ? '#0284c7' : '#ef4444')}; border-radius:14px; padding:18px; margin-bottom:24px; box-shadow:0 4px 15px rgba(0,0,0,0.06);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">RESULTADO DEL CUADRE DE CAJA:</div>
+            <div id="disp-cash-difference" style="font-size:18px; margin-top:2px;">
+              ${Math.abs(diffUSD) <= 0.05 ? 
+                '<span style="color:#10b981; font-weight:900;">🟢 ¡CAJA CUADRADA EXACTA! (Diferencia: $0.00)</span>' :
+                (diffUSD > 0.05 ? 
+                  `<span style="color:#0284c7; font-weight:900;">🔵 SOBRANTE EN CAJA: +$${diffUSD.toFixed(2)} USD (Bs. ${(diffUSD * currentTasa).toFixed(2)})</span>` :
+                  `<span style="color:#ef4444; font-weight:900;">🔴 FALTANTE EN CAJA: -$${Math.abs(diffUSD).toFixed(2)} USD (Bs. ${(Math.abs(diffUSD) * currentTasa).toFixed(2)})</span>`
+                )
+              }
+            </div>
+          </div>
+
+          <div style="display:flex; gap:16px; align-items:center;">
+            <div style="text-align:right;">
+              <span style="font-size:11px; color:var(--text-muted); display:block;">TOTAL DECLARADO:</span>
+              <strong id="disp-declared-total-usd" style="font-size:18px; color:var(--text-main);">$${declaredTotalUSD.toFixed(2)}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTONES DE ACCIÓN EJECUTIVA (WHATSAPP, IMPRIMIR, GUARDAR) -->
+      <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+        <button type="button" onclick="window.shareDigitalCashCloseWA('${selectedDate}', '${selectedShift}')" style="background:#059669; color:white; border:none; padding:10px 18px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 10px rgba(5,150,105,0.3);">
+          📲 Enviar Cierre por WhatsApp
+        </button>
+        <button type="button" onclick="window.printDigitalCashClose('${selectedDate}', '${selectedShift}')" style="background:#4f46e5; color:white; border:none; padding:10px 18px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 10px rgba(79,70,229,0.3);">
+          🖨️ Imprimir Ticket de Cierre
+        </button>
+        <button type="button" onclick="window.saveDigitalCashClose('${selectedDate}', '${selectedShift}')" style="background:#10b981; color:white; border:none; padding:10px 22px; border-radius:8px; font-weight:900; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 12px rgba(16,185,129,0.35);">
+          💾 Guardar Cierre Digital
+        </button>
+      </div>
+
+    </div>
+  `;
+}
+
+window.saveDigitalCashClose = async function(fecha, turno) {
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const b100 = parseFloat(document.getElementById("drawer-b100")?.value || 0);
+  const b50 = parseFloat(document.getElementById("drawer-b50")?.value || 0);
+  const b20 = parseFloat(document.getElementById("drawer-b20")?.value || 0);
+  const b10 = parseFloat(document.getElementById("drawer-b10")?.value || 0);
+  const b5 = parseFloat(document.getElementById("drawer-b5")?.value || 0);
+  const b1 = parseFloat(document.getElementById("drawer-b1")?.value || 0);
+  const coins = parseFloat(document.getElementById("drawer-coins")?.value || 0);
+  const totalUSDCounted = (b100 * 100) + (b50 * 50) + (b20 * 20) + (b10 * 10) + (b5 * 5) + (b1 * 1) + coins;
+  
+  const posLote = document.getElementById("drawer-pos-lote")?.value?.trim() || "";
+  const posVoucher = parseFloat(document.getElementById("drawer-pos-voucher")?.value || 0);
+  const pmVerified = parseFloat(document.getElementById("drawer-pm-verified")?.value || 0);
+  const bsCounted = parseFloat(document.getElementById("drawer-bs-counted")?.value || 0);
+  const expectedUSD = parseFloat(document.getElementById("hidden-expected-total-usd")?.value || 0);
+  const declaredUSD = totalUSDCounted + posVoucher + pmVerified + (bsCounted / (tasa || 1));
+  const diffUSD = declaredUSD - expectedUSD;
+
+  const newClose = {
+    id: "DIGITAL-" + Date.now(),
+    fecha: fecha,
+    turno: turno,
+    isDigital: true,
+    totalPuntoBs: (posVoucher * tasa),
+    totalPuntoUSD: posVoucher,
+    posLote: posLote,
+    totalPagoMovilBs: (pmVerified * tasa),
+    totalPagoMovilUSD: pmVerified,
+    totalEfectivoBs: bsCounted,
+    totalEfectivoUSD: totalUSDCounted,
+    tasaBCV: tasa,
+    totalDiaUSD: declaredUSD,
+    totalDiaBs: (declaredUSD * tasa),
+    expectedUSD: expectedUSD,
+    diferenciaUSD: diffUSD,
+    cuadrado: Math.abs(diffUSD) <= 0.05,
+    responsable: state.session?.name || "Moisés González (Manager)",
+    observaciones: `Cierre Digital auditado. Diferencia: $${diffUSD.toFixed(2)} USD. Lote POS: ${posLote || 'N/A'}.`
+  };
+
+  const list = getStoredCashCloses();
+  list.unshift(newClose);
+  saveStoredCashCloses(list);
+
+  try {
+    api("profile_save_cash_close", newClose).catch(()=>{});
+  } catch(e){}
+
+  showToast("✅ Cierre digital guardado y auditado con éxito.");
+  if (typeof render === "function") render();
+};
+
+window.shareDigitalCashCloseWA = function(fecha, turno) {
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const b100 = parseFloat(document.getElementById("drawer-b100")?.value || 0);
+  const b50 = parseFloat(document.getElementById("drawer-b50")?.value || 0);
+  const b20 = parseFloat(document.getElementById("drawer-b20")?.value || 0);
+  const b10 = parseFloat(document.getElementById("drawer-b10")?.value || 0);
+  const b5 = parseFloat(document.getElementById("drawer-b5")?.value || 0);
+  const b1 = parseFloat(document.getElementById("drawer-b1")?.value || 0);
+  const coins = parseFloat(document.getElementById("drawer-coins")?.value || 0);
+  const totalUSDCounted = (b100 * 100) + (b50 * 50) + (b20 * 20) + (b10 * 10) + (b5 * 5) + (b1 * 1) + coins;
+  
+  const posLote = document.getElementById("drawer-pos-lote")?.value?.trim() || "N/A";
+  const posVoucher = parseFloat(document.getElementById("drawer-pos-voucher")?.value || 0);
+  const pmVerified = parseFloat(document.getElementById("drawer-pm-verified")?.value || 0);
+  const bsCounted = parseFloat(document.getElementById("drawer-bs-counted")?.value || 0);
+  const expectedUSD = parseFloat(document.getElementById("hidden-expected-total-usd")?.value || 0);
+  const declaredUSD = totalUSDCounted + posVoucher + pmVerified + (bsCounted / (tasa || 1));
+  const diffUSD = declaredUSD - expectedUSD;
+
+  const diffText = Math.abs(diffUSD) <= 0.05 ? "🟢 CUADRADO EXACTO ($0.00)" : (diffUSD > 0 ? `🔵 SOBRANTE (+$${diffUSD.toFixed(2)})` : `🔴 FALTANTE (-$${Math.abs(diffUSD).toFixed(2)})`);
+
+  const msg = `📊 *CIERRE DE CAJA DIGITAL - CREACIONES JJ* 📊
+📅 *Fecha:* ${fecha}
+⏰ *Turno:* ${turno}
+👤 *Auditor:* ${state.session?.name || 'Moisés González'}
+💵 *Tasa BCV:* Bs. ${tasa.toFixed(2)}/$
+
+💳 *PUNTO DE VENTA (POS):*
+• Lote Terminal: #${posLote}
+• Monto Voucher: $${posVoucher.toFixed(2)} (Bs. ${(posVoucher * tasa).toLocaleString('es-VE')})
+
+📱 *PAGO MÓVIL:*
+• Total Verificado: $${pmVerified.toFixed(2)} (Bs. ${(pmVerified * tasa).toLocaleString('es-VE')})
+
+💵 *EFECTIVO USD (GAVETA):*
+• Total Contado: $${totalUSDCounted.toFixed(2)}
+  (Desglose: ${b100 ? `${b100}x$100, ` : ''}${b50 ? `${b50}x$50, ` : ''}${b20 ? `${b20}x$20, ` : ''}${b10 ? `${b10}x$10, ` : ''}${b5 ? `${b5}x$5, ` : ''}${b1 ? `${b1}x$1` : ''})
+
+🇻🇪 *EFECTIVO BS:*
+• Total Contado: Bs. ${bsCounted.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+
+📈 *TOTALES & BALANCE:*
+• Esperado por Sistema: $${expectedUSD.toFixed(2)} USD
+• Total Declarado en Caja: $${declaredUSD.toFixed(2)} USD
+• Estado del Cuadre: ${diffText}`;
+
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+window.printDigitalCashClose = function(fecha, turno) {
+  const tasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
+  const b100 = parseFloat(document.getElementById("drawer-b100")?.value || 0);
+  const b50 = parseFloat(document.getElementById("drawer-b50")?.value || 0);
+  const b20 = parseFloat(document.getElementById("drawer-b20")?.value || 0);
+  const b10 = parseFloat(document.getElementById("drawer-b10")?.value || 0);
+  const b5 = parseFloat(document.getElementById("drawer-b5")?.value || 0);
+  const b1 = parseFloat(document.getElementById("drawer-b1")?.value || 0);
+  const coins = parseFloat(document.getElementById("drawer-coins")?.value || 0);
+  const totalUSDCounted = (b100 * 100) + (b50 * 50) + (b20 * 20) + (b10 * 10) + (b5 * 5) + (b1 * 1) + coins;
+  
+  const posLote = document.getElementById("drawer-pos-lote")?.value?.trim() || "N/A";
+  const posVoucher = parseFloat(document.getElementById("drawer-pos-voucher")?.value || 0);
+  const pmVerified = parseFloat(document.getElementById("drawer-pm-verified")?.value || 0);
+  const bsCounted = parseFloat(document.getElementById("drawer-bs-counted")?.value || 0);
+  const expectedUSD = parseFloat(document.getElementById("hidden-expected-total-usd")?.value || 0);
+  const declaredUSD = totalUSDCounted + posVoucher + pmVerified + (bsCounted / (tasa || 1));
+  const diffUSD = declaredUSD - expectedUSD;
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) return;
+  printWin.document.write(`
+    <html>
+      <head>
+        <title>Comprobante de Cierre Digital - Creaciones JJ</title>
+        <style>
+          body { font-family: monospace; font-size: 13px; padding: 20px; max-width: 380px; margin: 0 auto; color: #000; }
+          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+          .row { display: flex; justify-content: space-between; margin: 4px 0; }
+          .bold { font-weight: bold; }
+          .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h3>CREACIONES JJ</h3>
+          <div>COMPROBANTE DE CIERRE DIGITAL</div>
+          <div>Fecha: ${fecha} | ${turno}</div>
+          <div>Auditor: ${state.session?.name || 'Moisés González'}</div>
+          <div>Tasa BCV: Bs. ${tasa.toFixed(2)}</div>
+        </div>
+        <div class="row"><span>PUNTO POS (Lote #${posLote}):</span><span class="bold">$${posVoucher.toFixed(2)}</span></div>
+        <div class="row"><span>PAGO MÓVIL:</span><span class="bold">$${pmVerified.toFixed(2)}</span></div>
+        <div class="row"><span>EFECTIVO USD:</span><span class="bold">$${totalUSDCounted.toFixed(2)}</span></div>
+        <div class="row"><span>EFECTIVO BS:</span><span class="bold">Bs. ${bsCounted.toLocaleString('es-VE')}</span></div>
+        <div class="divider"></div>
+        <div class="row bold"><span>ESPERADO SISTEMA:</span><span>$${expectedUSD.toFixed(2)}</span></div>
+        <div class="row bold"><span>TOTAL DECLARADO:</span><span>$${declaredUSD.toFixed(2)}</span></div>
+        <div class="row bold"><span>DIFERENCIA:</span><span>${diffUSD >= 0 ? '+' : ''}$${diffUSD.toFixed(2)}</span></div>
+        <div class="divider"></div>
+        <div style="text-align:center; font-size:11px; margin-top:15px;">Firma Auditor Gerencia</div>
+        <br><br>
+        <div style="text-align:center;">_________________________</div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+    </html>
+  `);
+  printWin.document.close();
+};
+
+function renderStandardCashView() {
   const closes = getStoredCashCloses();
   const currentTasa = parseFloat(store.get("pp_tasa_bcv", 798.33));
 
@@ -10513,12 +11992,19 @@ function cashView() {
             <i class="fas fa-cash-register" style="color:#f59e0b;"></i> Cierre de Caja &amp; Arqueo Diario
           </h1>
           <p style="font-size:12.5px; color:var(--text-muted); margin:0;">
-            Transcribe los cierres de turno (1:00 PM y 8:00 PM) basados en la planilla física de Creaciones JJ para el contador fiscal.
+            Planillas de cierre de turno de Creaciones JJ.
           </p>
         </div>
-        <button type="button" class="primary-button" onclick="window.openNewCashCloseModal()" style="background:#f59e0b; color:white; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-          <i class="fas fa-plus-circle"></i> + Nuevo Cierre de Turno
-        </button>
+        <div style="display:flex; gap:8px;">
+          ${isManagerOnly() ? `
+            <button type="button" onclick="window.setManagerCashMode('digital')" style="background:#10b981; color:white; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer;">
+              ⚡ Terminal Digital &amp; POS
+            </button>
+          ` : ''}
+          <button type="button" class="primary-button" onclick="window.openNewCashCloseModal()" style="background:#f59e0b; color:white; border:none; padding:9px 16px; border-radius:8px; font-weight:800; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+            <i class="fas fa-plus-circle"></i> + Nuevo Cierre Tradicional
+          </button>
+        </div>
       </div>
 
       <!-- Historial de Cierres -->
@@ -10528,10 +12014,10 @@ function cashView() {
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
               <div>
                 <span style="font-size:11px; font-weight:bold; color:#f59e0b; text-transform:uppercase;">
-                  <i class="fas fa-clock"></i> ${escapeHtml(c.turno)}
+                  <i class="fas fa-clock"></i> ${escapeHtml(c.turno)} ${c.isDigital ? '· ⚡ Digital' : ''}
                 </span>
                 <h3 style="margin:2px 0 0 0; font-size:16px; color:var(--text-main);">Fecha: ${escapeHtml(c.fecha)}</h3>
-                <div style="font-size:11.5px; color:var(--text-muted);">Elaborado por: <strong>${escapeHtml(c.responsable || 'Gerencia')}</strong> | Fondo inicial: <strong>Bs. ${c.inicioBs} / $${c.inicioUSD}</strong></div>
+                <div style="font-size:11.5px; color:var(--text-muted);">Elaborado por: <strong>${escapeHtml(c.responsable || 'Gerencia')}</strong> | Fondo inicial: <strong>Bs. ${c.inicioBs || 0} / $${c.inicioUSD || 0}</strong></div>
               </div>
               <div style="text-align:right;">
                 <span style="font-size:11px; color:var(--text-muted); display:block;">TOTAL EN BS:</span>
@@ -10576,6 +12062,17 @@ function cashView() {
     </div>
   `;
 }
+
+function cashView() {
+  if (!isLead()) {
+    return `<div style="text-align:center; padding:50px; color:#ef4444;"><h2>🔒 Acceso Restringido</h2><p>Este módulo es exclusivo para Gerencia y Jefes.</p></div>`;
+  }
+  if (isManagerOnly()) {
+    return renderManagerDigitalCashRegister();
+  }
+  return renderStandardCashView();
+}
+
 
 window.openNewCashCloseModal = function() {
   let photoRespaldoBase64 = "";
