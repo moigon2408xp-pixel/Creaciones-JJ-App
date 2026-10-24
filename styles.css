@@ -2953,3 +2953,171 @@ html, body {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* ============================================================
+   ACTUALIZACIÓN 2026: RECEPCIÓN VIP, VIDEOS, DRAG & DROP Y CLIENTES
+   ============================================================ */
+
+/* Drag & Drop y Zona de Pegado Rápido */
+.ref-dropzone-box {
+  border: 2px dashed var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg-main);
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  position: relative;
+  text-align: center;
+}
+.ref-dropzone-box:hover,
+.ref-dropzone-box.drag-over {
+  border-color: #0ea5e9 !important;
+  background: rgba(14, 165, 233, 0.08) !important;
+}
+.ref-dropzone-box.drag-active {
+  border-color: #10b981 !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+}
+
+/* Badges y Tarjetas de Video de Referencia */
+.ref-video-badge {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6) !important;
+  color: white !important;
+  padding: 5px 12px !important;
+  border-radius: 8px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  text-decoration: none !important;
+  box-shadow: 0 3px 8px rgba(236, 72, 153, 0.35) !important;
+  transition: transform 0.15s ease;
+}
+.ref-video-badge:hover {
+  transform: translateY(-1px) scale(1.02);
+  opacity: 0.95;
+}
+.ref-video-thumb-container {
+  position: relative;
+  width: 65px;
+  height: 65px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1e1b4b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #8b5cf6;
+}
+.ref-video-play-icon {
+  font-size: 22px;
+  color: #38bdf8;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+/* Directorio de Clientes en Ajustes */
+.client-directory-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.client-directory-search {
+  flex: 1;
+  min-width: 220px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.client-filter-chip {
+  padding: 5px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 20px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.client-filter-chip.active {
+  background: #0ea5e9;
+  color: white;
+  border-color: #0ea5e9;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.35);
+}
+.client-filter-chip.chip-warn.active {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+}
+.client-card-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.client-card-item:hover {
+  border-color: #0ea5e9;
+  transform: translateY(-1px);
+}
+.client-card-item.is-dup {
+  border-left: 4px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.04);
+}
+.client-card-item.no-phone {
+  border-left: 4px solid #ef4444;
+  background: rgba(239, 68, 68, 0.03);
+}
+
+/* Temas Exclusivos Recepcionista */
+.reception-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.reception-theme-card {
+  border: 1.5px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+.reception-theme-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+}
+.reception-theme-card.active {
+  border-color: #ec4899;
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.3);
+}
+.reception-color-swatches {
+  display: flex;
+  gap: 5px;
+  height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.reception-color-swatches span {
+  flex: 1;
+  height: 100%;
+}
