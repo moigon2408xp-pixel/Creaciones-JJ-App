@@ -213,32 +213,66 @@ function applyTheme() {
   
   let cssRules = [];
   
-  // Aplicar colores personalizados si existen
-  if (customColors.primary) {
-    cssRules.push(`--primary-color: ${customColors.primary} !important;`);
-    cssRules.push(`--primary-hover: ${customColors.primary} !important;`);
-  } else {
-    // Aplicar colores preestablecidos según el accent
-    const accentColors = {
-      blue: "#1e3a8a",
-      emerald: "#065f46", 
-      purple: "#581c87",
-      amber: "#78350f"
-    };
-    if (accentColors[currentAccent]) {
-      cssRules.push(`--primary-color: ${accentColors[currentAccent]} !important;`);
-      cssRules.push(`--primary-hover: ${accentColors[currentAccent]} !important;`);
+  // Aplicar tema VIP exclusivo si la sesión activa es de recepcionista
+  const isRecep = isReception();
+  const receptionTheme = store.get("pp_reception_theme", null);
+
+  if (isRecep && receptionTheme) {
+    if (receptionTheme.primary) {
+      cssRules.push(`--primary-color: ${receptionTheme.primary} !important;`);
+      cssRules.push(`--primary-hover: ${receptionTheme.primary} !important;`);
     }
-  }
-  
-  if (customColors.cardBg) {
-    cssRules.push(`--bg-card: ${customColors.cardBg} !important;`);
-  }
-  if (customColors.textMain) {
-    cssRules.push(`--text-main: ${customColors.textMain} !important;`);
-  }
-  if (customColors.mainBg) {
-    cssRules.push(`--bg-main: ${customColors.mainBg} !important;`);
+    if (receptionTheme.bgMain) {
+      cssRules.push(`--bg-main: ${receptionTheme.bgMain} !important;`);
+    }
+    if (receptionTheme.bgCard) {
+      cssRules.push(`--bg-card: ${receptionTheme.bgCard} !important;`);
+      cssRules.push(`--card-bg: ${receptionTheme.bgCard} !important;`);
+    }
+    if (receptionTheme.textMain) {
+      cssRules.push(`--text-main: ${receptionTheme.textMain} !important;`);
+    }
+    if (receptionTheme.navBg) {
+      cssRules.push(`--nav-bg: ${receptionTheme.navBg} !important;`);
+    }
+    if (receptionTheme.decor) {
+      document.body.style.background = receptionTheme.decor;
+      document.body.style.backgroundAttachment = "fixed";
+    } else {
+      document.body.style.background = "";
+      document.body.style.backgroundAttachment = "";
+    }
+  } else {
+    document.body.style.background = "";
+    document.body.style.backgroundAttachment = "";
+
+    // Aplicar colores personalizados estándar si existen
+    if (customColors.primary) {
+      cssRules.push(`--primary-color: ${customColors.primary} !important;`);
+      cssRules.push(`--primary-hover: ${customColors.primary} !important;`);
+    } else {
+      // Aplicar colores preestablecidos según el accent
+      const accentColors = {
+        blue: "#1e3a8a",
+        emerald: "#065f46", 
+        purple: "#581c87",
+        amber: "#78350f"
+      };
+      if (accentColors[currentAccent]) {
+        cssRules.push(`--primary-color: ${accentColors[currentAccent]} !important;`);
+        cssRules.push(`--primary-hover: ${accentColors[currentAccent]} !important;`);
+      }
+    }
+    
+    if (customColors.cardBg) {
+      cssRules.push(`--bg-card: ${customColors.cardBg} !important;`);
+    }
+    if (customColors.textMain) {
+      cssRules.push(`--text-main: ${customColors.textMain} !important;`);
+    }
+    if (customColors.mainBg) {
+      cssRules.push(`--bg-main: ${customColors.mainBg} !important;`);
+    }
   }
   
   if (cssRules.length > 0) {
@@ -303,9 +337,50 @@ window.resetDefaultTheme = resetDefaultTheme;
 window.setAccent = setAccent;
 window.resetCustomTheme = resetCustomTheme;
 window.saveCustomColor = saveCustomColor;
-window.setAccent = setAccent;
-window.saveCustomColor = saveCustomColor;
-window.resetCustomTheme = resetCustomTheme;
+
+// ==== TEMAS Y PERSONALIZACIÓN EXCLUSIVA PARA RECEPCIONISTAS ====
+const RECEPTION_PRESETS = {
+  rosegold: { name: "🌸 Rose Gold Boutique", primary: "#e11d48", bgMain: "#fff1f2", bgCard: "#ffffff", textMain: "#881337", navBg: "#ffe4e6", decor: "linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)" },
+  lavender: { name: "💜 Lavanda Creativo", primary: "#7c3aed", bgMain: "#f5f3ff", bgCard: "#ffffff", textMain: "#4c1d95", navBg: "#ede9fe", decor: "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)" },
+  turquoise: { name: "🌊 Turquesa Caribe", primary: "#0891b2", bgMain: "#ecfeff", bgCard: "#ffffff", textMain: "#164e63", navBg: "#cffafe", decor: "linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)" },
+  peach: { name: "🍑 Melocotón Pastel", primary: "#ea580c", bgMain: "#fff7ed", bgCard: "#ffffff", textMain: "#7c2d12", navBg: "#ffedd5", decor: "linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)" },
+  mint: { name: "🍃 Menta & Salvia", primary: "#059669", bgMain: "#f0fdf4", bgCard: "#ffffff", textMain: "#064e3b", navBg: "#dcfce7", decor: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)" },
+  darkluxury: { name: "🌙 Dark Velvet VIP", primary: "#ec4899", bgMain: "#09090b", bgCard: "#18181b", textMain: "#fafafa", navBg: "#18181b", decor: "linear-gradient(135deg, #09090b 0%, #18181b 100%)" },
+  stitch: { name: "✨ Stitch & Angel", primary: "#2563eb", bgMain: "#eff6ff", bgCard: "#ffffff", textMain: "#1e3a8a", navBg: "#dbeafe", decor: "linear-gradient(135deg, #eff6ff 0%, #fce7f3 100%)" }
+};
+window.RECEPTION_PRESETS = RECEPTION_PRESETS;
+
+window.setReceptionPresetTheme = function(themeId) {
+  if (!isReception()) {
+    showToast("⚠️ La personalización VIP está activa solo para el perfil de Recepcionista.");
+    return;
+  }
+  const theme = RECEPTION_PRESETS[themeId];
+  if (!theme) return;
+  store.set("pp_reception_theme", theme);
+  applyTheme();
+  showToast(`🎨 Tema de Recepción aplicado: ${theme.name}`);
+  if (typeof render === "function") render();
+};
+
+window.saveReceptionCustomTheme = function(customObj) {
+  if (!isReception()) return;
+  const current = store.get("pp_reception_theme", {}) || {};
+  const merged = Object.assign({}, current, customObj);
+  store.set("pp_reception_theme", merged);
+  applyTheme();
+  showToast("💾 Personalización de Recepción guardada.");
+  if (typeof render === "function") render();
+};
+
+window.resetReceptionTheme = function() {
+  store.remove("pp_reception_theme");
+  document.body.style.background = "";
+  applyTheme();
+  showToast("Tema de Recepción restablecido por defecto.");
+  if (typeof render === "function") render();
+};
+
 
 function cleanPhoneNumber(phone = "") {
   let num = String(phone || "").replace(/\D/g, "");
@@ -969,7 +1044,9 @@ async function refresh(showMessage = true) {
     const rawClients = rawData.frequentClients || rawData.clients || rawData.clientes || rawData.telefonos || [];
     const rawTypes = rawData.frequentTypes || rawData.types || rawData.tipos || rawData.tiposTrabajo || [];
     
-    state.frequentClients = rawClients.map(normalizeClient).filter(c => c.name && c.name.toLowerCase() !== "nombre");
+    state.frequentClients = rawClients.map(normalizeClient)
+      .filter(c => c.name && c.name.toLowerCase() !== "nombre")
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "", 'es', { sensitivity: 'base' }));
     state.frequentTypes = rawTypes.map(normalizeType).filter(t => t && t.toLowerCase() !== "tipo");
     
     const rawMotivos = rawData.motivos || rawData.frequentMotivos || [];
@@ -1539,8 +1616,15 @@ function historyView() {
 
               ${refLinks.length ? `
                 <div style="margin-top:6px;">
-                  <strong style="font-size:12px;">🖼️ Fotos de Referencia del Cliente:</strong><br/>
-                  ${refLinks.map((link, idx) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="ref-photo-badge">🖼️ Ref ${idx + 1}</a>`).join("")}
+                  <strong style="font-size:12px;">🖼️ / 🎥 Referencias del Cliente:</strong><br/>
+                  ${refLinks.map((link, idx) => {
+                    const lLower = link.toLowerCase();
+                    const isVid = lLower.includes('.mp4') || lLower.includes('.webm') || lLower.includes('.mov') || lLower.includes('tiktok.com') || lLower.includes('instagram.com') || lLower.includes('youtube.com');
+                    if (isVid) {
+                      return `<button type="button" class="ref-video-badge" onclick="event.stopPropagation(); window.openVideoRefModal('${escapeHtml(link)}')" style="cursor:pointer; display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:12px; background:#111827; color:#38bdf8; border:1px solid #38bdf8; font-weight:bold;">🎥 Video Ref ${idx + 1} ▶</button>`;
+                    }
+                    return `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="ref-photo-badge" onclick="event.stopPropagation();">🖼️ Ref ${idx + 1}</a>`;
+                  }).join("")}
                 </div>
               ` : ''}
               
@@ -4456,6 +4540,50 @@ function settingsView() {
 
       <div class="jj-accordion-group">
 
+        <!-- 0. DIRECTORIO Y GESTION DE CLIENTES / CONTACTOS -->
+        <div class="jj-accordion-item" id="acc-clientes">
+          <div class="jj-accordion-header" onclick="window.toggleAccordion('acc-clientes')">
+            <div class="jj-accordion-title-wrap">
+              <div class="jj-accordion-icon" style="background:rgba(14,165,233,0.15); color:#0ea5e9;">
+                <i class="fas fa-address-book"></i>
+              </div>
+              <div>
+                <h3 class="jj-accordion-title">Directorio de Clientes y Contactos</h3>
+                <div class="jj-accordion-sub" id="acc-clientes-sub">${(state.frequentClients || []).length} clientes registrados en base de datos</div>
+              </div>
+            </div>
+            <i class="fas fa-chevron-down jj-accordion-chevron"></i>
+          </div>
+          <div class="jj-accordion-body">
+            <!-- Barra de Búsqueda y Filtros Rápidos -->
+            <div class="client-directory-toolbar" style="margin-bottom:12px;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <input type="text" id="search-client-input" placeholder="🔍 Buscar por nombre, teléfono o dirección..." oninput="window.filterClientsSettings(this.value)" style="flex:2; min-width:200px; padding:7px 12px; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px;">
+                <button type="button" class="primary-button" onclick="window.openNewClientModalFromSettings()" style="padding:7px 14px; font-size:12px; font-weight:bold; background:#0ea5e9; border:none; display:inline-flex; align-items:center; gap:6px;">
+                  <i class="fas fa-user-plus"></i> Registrar Nuevo Cliente
+                </button>
+                <button type="button" class="secondary-button" onclick="window.cleanDuplicateClients()" style="padding:7px 12px; font-size:12px; font-weight:bold; background:#f59e0b; color:white; border:none; display:inline-flex; align-items:center; gap:6px;" title="Detectar y unificar clientes repetidos en Google Sheets">
+                  <i class="fas fa-broom"></i> Limpiar Duplicados
+                </button>
+              </div>
+              
+              <!-- Chips de Filtro -->
+              <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                <span style="font-size:11px; color:var(--text-muted); font-weight:bold;">Filtrar:</span>
+                <button type="button" class="client-filter-chip active" data-filter="all" onclick="window.setClientDirectoryFilter('all', this)">Todos (<span id="count-all-clients">0</span>)</button>
+                <button type="button" class="client-filter-chip" data-filter="missing-phone" onclick="window.setClientDirectoryFilter('missing-phone', this)" style="border-color:#f59e0b; color:#f59e0b;">⚠️ Sin Teléfono (<span id="count-missing-phone">0</span>)</button>
+                <button type="button" class="client-filter-chip" data-filter="duplicates" onclick="window.setClientDirectoryFilter('duplicates', this)" style="border-color:#ef4444; color:#ef4444;">👥 Duplicados (<span id="count-dup-clients">0</span>)</button>
+                <button type="button" class="client-filter-chip" data-filter="delivery" onclick="window.setClientDirectoryFilter('delivery', this)" style="border-color:#10b981; color:#10b981;">🚚 Con Delivery (<span id="count-del-clients">0</span>)</button>
+              </div>
+            </div>
+
+            <!-- Listado de tarjetas de clientes -->
+            <div id="settings-clients-container" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:10px; max-height:480px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.15); border-radius:8px;">
+              <!-- Se llena dinámicamente con renderClientDirectorySettings() -->
+            </div>
+          </div>
+        </div>
+
         <!-- 1. CATÁLOGO DE MOTIVOS Y TEMÁTICAS -->
         <div class="jj-accordion-item" id="acc-motivos">
           <div class="jj-accordion-header" onclick="window.toggleAccordion('acc-motivos')">
@@ -4593,24 +4721,83 @@ function settingsView() {
               </div>
               <div>
                 <h3 class="jj-accordion-title">Personalización y Temas Visuales</h3>
-                <div class="jj-accordion-sub">Paletas de color y estética del taller</div>
+                <div class="jj-accordion-sub">${isReception() ? '✨ Suite VIP de Colores y Estética para Recepción y Mostrador' : 'Paletas de color y estética del taller'}</div>
               </div>
             </div>
             <i class="fas fa-chevron-down jj-accordion-chevron"></i>
           </div>
           <div class="jj-accordion-body">
-            <div style="margin-bottom:14px;">
-              <span style="font-size:12px; font-weight:bold; color:var(--text-main); display:block; margin-bottom:8px;">TEMAS PREESTABLECIDOS:</span>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" class="secondary-button" onclick="setPresetTheme('blue')" style="font-size:11px; padding:6px 12px; background:#1e3a8a; color:white; border:none;">💙 Azul Real</button>
-                <button type="button" class="secondary-button" onclick="setPresetTheme('emerald')" style="font-size:11px; padding:6px 12px; background:#065f46; color:white; border:none;">💚 Esmeralda</button>
-                <button type="button" class="secondary-button" onclick="setPresetTheme('purple')" style="font-size:11px; padding:6px 12px; background:#581c87; color:white; border:none;">💜 Púrpura</button>
-                <button type="button" class="secondary-button" onclick="setPresetTheme('amber')" style="font-size:11px; padding:6px 12px; background:#78350f; color:white; border:none;">🧡 Ámbar</button>
+            ${isReception() ? `
+              <!-- EXCLUSIVO RECEPCIÓN / MOSTRADOR -->
+              <div style="background:linear-gradient(135deg, rgba(225,29,72,0.08), rgba(124,58,237,0.08)); border:1.5px solid rgba(225,29,72,0.3); border-radius:12px; padding:14px; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                  <span style="font-weight:900; color:#e11d48; font-size:13px; display:flex; align-items:center; gap:6px;">
+                    ✨ SUITE DE TEMAS EXCLUSIVOS PARA RECEPCIONISTAS
+                  </span>
+                  <span style="font-size:10px; background:#e11d48; color:white; font-weight:bold; padding:2px 8px; border-radius:10px;">Perfil Mostrador VIP</span>
+                </div>
+                <p style="font-size:11.5px; color:var(--text-muted); margin:0 0 12px 0;">
+                  Personaliza tu espacio de trabajo para atender pedidos con la paleta y estilo que más te inspire. Selecciona un tema preestablecido o personaliza los colores a tu gusto:
+                </p>
+
+                <div class="reception-theme-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; margin-bottom:16px;">
+                  ${Object.entries(RECEPTION_PRESETS).map(([id, t]) => `
+                    <button type="button" class="reception-theme-card" onclick="setReceptionPresetTheme('${id}')" style="background:${t.bgCard}; border:2px solid ${t.primary}; border-radius:10px; padding:10px 8px; text-align:center; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.05); transition:transform 0.15s ease;">
+                      <div style="display:flex; gap:3px;">
+                        <span style="width:14px; height:14px; border-radius:50%; background:${t.primary}; border:1px solid rgba(0,0,0,0.1);"></span>
+                        <span style="width:14px; height:14px; border-radius:50%; background:${t.bgMain}; border:1px solid rgba(0,0,0,0.1);"></span>
+                        <span style="width:14px; height:14px; border-radius:50%; background:${t.navBg}; border:1px solid rgba(0,0,0,0.1);"></span>
+                      </div>
+                      <span style="font-size:11px; font-weight:800; color:${t.primary};">${t.name}</span>
+                    </button>
+                  `).join('')}
+                </div>
+
+                <!-- Personalización granular para recepcionista -->
+                <div style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+                  <span style="font-size:11.5px; font-weight:bold; color:var(--text-main); display:block; margin-bottom:8px;">
+                    🎨 Ajuste Detallado de Colores:
+                  </span>
+                  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                    <label style="font-size:11px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+                      Color de Fondo:
+                      <input type="color" id="rec-color-bg" value="${(store.get('pp_reception_theme',{})).bgMain || '#fff1f2'}" onchange="window.saveReceptionCustomTheme({ bgMain: this.value, decor: this.value })" style="width:44px; height:30px; border:none; border-radius:4px; cursor:pointer;">
+                    </label>
+                    <label style="font-size:11px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+                      Color de Tarjetas:
+                      <input type="color" id="rec-color-card" value="${(store.get('pp_reception_theme',{})).bgCard || '#ffffff'}" onchange="window.saveReceptionCustomTheme({ bgCard: this.value })" style="width:44px; height:30px; border:none; border-radius:4px; cursor:pointer;">
+                    </label>
+                    <label style="font-size:11px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+                      Color Primario / Botones:
+                      <input type="color" id="rec-color-primary" value="${(store.get('pp_reception_theme',{})).primary || '#e11d48'}" onchange="window.saveReceptionCustomTheme({ primary: this.value })" style="width:44px; height:30px; border:none; border-radius:4px; cursor:pointer;">
+                    </label>
+                    <label style="font-size:11px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+                      Color de Texto:
+                      <input type="color" id="rec-color-text" value="${(store.get('pp_reception_theme',{})).textMain || '#881337'}" onchange="window.saveReceptionCustomTheme({ textMain: this.value })" style="width:44px; height:30px; border:none; border-radius:4px; cursor:pointer;">
+                    </label>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <button type="button" class="secondary-button" onclick="resetReceptionTheme()" style="font-size:11px; padding:6px 12px;">
+                      🔄 Restablecer Tema de Recepción
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <button type="button" class="secondary-button" onclick="resetDefaultTheme()" style="font-size:11px; padding:5px 10px;">
-              🔄 Restablecer Colores por Defecto
-            </button>
+            ` : `
+              <!-- ESTÁNDAR PARA TRABAJADORES Y TALLER -->
+              <div style="margin-bottom:14px;">
+                <span style="font-size:12px; font-weight:bold; color:var(--text-main); display:block; margin-bottom:8px;">TEMAS PREESTABLECIDOS DEL TALLER:</span>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button type="button" class="secondary-button" onclick="setPresetTheme('blue')" style="font-size:11px; padding:6px 12px; background:#1e3a8a; color:white; border:none;">💙 Azul Real</button>
+                  <button type="button" class="secondary-button" onclick="setPresetTheme('emerald')" style="font-size:11px; padding:6px 12px; background:#065f46; color:white; border:none;">💚 Esmeralda</button>
+                  <button type="button" class="secondary-button" onclick="setPresetTheme('purple')" style="font-size:11px; padding:6px 12px; background:#581c87; color:white; border:none;">💜 Púrpura</button>
+                  <button type="button" class="secondary-button" onclick="setPresetTheme('amber')" style="font-size:11px; padding:6px 12px; background:#78350f; color:white; border:none;">🧡 Ámbar</button>
+                </div>
+              </div>
+              <button type="button" class="secondary-button" onclick="resetDefaultTheme()" style="font-size:11px; padding:5px 10px;">
+                🔄 Restablecer Colores por Defecto
+              </button>
+            `}
           </div>
         </div>
 
@@ -4771,6 +4958,249 @@ window.toggleAccordion = function(id) {
   const item = document.getElementById(id);
   if (!item) return;
   item.classList.toggle('is-open');
+  if (id === 'acc-clientes' && item.classList.contains('is-open')) {
+    window.renderClientDirectorySettings();
+  }
+};
+
+window.renderClientDirectorySettings = function(filter = 'all', searchQuery = '') {
+  const container = document.getElementById("settings-clients-container");
+  if (!container) return;
+
+  const rawList = state.frequentClients || [];
+  // Ordenar alfabéticamente
+  const sorted = [...rawList].sort((a,b) => (a.name||"").localeCompare(b.name||"", 'es', {sensitivity:'base'}));
+
+  // Conteo de repeticiones de nombres
+  const counts = {};
+  sorted.forEach(c => {
+    const k = (c.name || "").trim().toLowerCase();
+    if (k) counts[k] = (counts[k] || 0) + 1;
+  });
+
+  const query = (searchQuery !== undefined && searchQuery !== null ? searchQuery : (document.getElementById("search-client-input")?.value || "")).trim().toLowerCase();
+  const currentFilter = filter || window._currentClientDirFilter || 'all';
+  window._currentClientDirFilter = currentFilter;
+
+  // Métricas para chips de filtro
+  const totalCount = sorted.length;
+  let missingPhoneCount = 0;
+  let dupCount = 0;
+  let delCount = 0;
+
+  sorted.forEach(c => {
+    const hasPhone = !!(c.phone && String(c.phone).trim() && String(c.phone).trim() !== "0");
+    if (!hasPhone) missingPhoneCount++;
+    const isDup = counts[(c.name||"").trim().toLowerCase()] > 1;
+    if (isDup) dupCount++;
+    const isDel = c.delivery === "Sí" || c.delivery === "SI" || c.delivery === "SA-";
+    if (isDel) delCount++;
+  });
+
+  const elAll = document.getElementById("count-all-clients");
+  const elMiss = document.getElementById("count-missing-phone");
+  const elDup = document.getElementById("count-dup-clients");
+  const elDel = document.getElementById("count-del-clients");
+  const elSub = document.getElementById("acc-clientes-sub");
+
+  if (elAll) elAll.textContent = totalCount;
+  if (elMiss) elMiss.textContent = missingPhoneCount;
+  if (elDup) elDup.textContent = dupCount;
+  if (elDel) elDel.textContent = delCount;
+  if (elSub) elSub.textContent = `${totalCount} clientes registrados (${missingPhoneCount} sin teléfono, ${dupCount} repetidos)`;
+
+  // Filtrar
+  const filtered = sorted.filter(c => {
+    const cName = (c.name || "").trim();
+    const cPhone = (c.phone || "").trim();
+    const cZona = (c.zona || "").trim();
+    const cDir = (c.direccion || "").trim();
+    const hasPhone = !!(cPhone && cPhone !== "0");
+    const isDup = counts[cName.toLowerCase()] > 1;
+    const isDel = c.delivery === "Sí" || c.delivery === "SI" || c.delivery === "SA-";
+
+    if (currentFilter === 'missing-phone' && hasPhone) return false;
+    if (currentFilter === 'duplicates' && !isDup) return false;
+    if (currentFilter === 'delivery' && !isDel) return false;
+
+    if (query) {
+      const match = cName.toLowerCase().includes(query) ||
+                    cPhone.toLowerCase().includes(query) ||
+                    cZona.toLowerCase().includes(query) ||
+                    cDir.toLowerCase().includes(query);
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = `
+      <div style="grid-column:1/-1; text-align:center; padding:24px; color:var(--text-muted); font-size:13px;">
+        <i class="fas fa-search" style="font-size:24px; margin-bottom:8px; display:block;"></i>
+        No se encontraron clientes con los filtros aplicados.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered.map((c) => {
+    const hasPhone = !!(c.phone && String(c.phone).trim() && String(c.phone).trim() !== "0");
+    const isDup = counts[(c.name||"").trim().toLowerCase()] > 1;
+    const isDel = c.delivery === "Sí" || c.delivery === "SI" || c.delivery === "SA-";
+    const cleanPhone = hasPhone ? cleanPhoneNumber(c.phone) : "";
+
+    return `
+      <div class="client-card-item ${!hasPhone ? 'missing-phone' : ''}" style="background:var(--bg-main); border:1px solid ${!hasPhone ? '#f59e0b' : 'var(--border-color)'}; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between; gap:8px;">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px; margin-bottom:4px;">
+            <strong style="font-size:13px; color:var(--text-main); word-break:break-word;">${escapeHtml(c.name)}</strong>
+            <div style="display:flex; gap:4px; flex-shrink:0;">
+              ${isDup ? `<span style="font-size:9.5px; font-weight:800; background:#ef4444; color:white; padding:1px 6px; border-radius:10px;" title="Este nombre aparece repetido en la base de datos">👥 Repetido</span>` : ''}
+              ${isDel ? `<span style="font-size:9.5px; font-weight:800; background:#10b981; color:white; padding:1px 6px; border-radius:10px;" title="Cliente con delivery">🚚 Delivery</span>` : ''}
+            </div>
+          </div>
+
+          <div style="font-size:11.5px; margin-bottom:4px;">
+            ${hasPhone ? `
+              <span style="color:var(--text-muted);"><i class="fab fa-whatsapp" style="color:#25d366;"></i> ${escapeHtml(c.phone)}</span>
+              <a href="https://wa.me/${cleanPhone}" target="_blank" rel="noopener" style="margin-left:6px; font-size:10px; color:#25d366; text-decoration:underline; font-weight:bold;">Chatear</a>
+            ` : `
+              <span style="color:#ef4444; font-weight:800; background:rgba(239,68,68,0.1); padding:2px 6px; border-radius:4px; font-size:10.5px;">
+                ⚠️ Sin Teléfono Registrado
+              </span>
+            `}
+          </div>
+
+          ${(c.zona || c.direccion) ? `
+            <div style="font-size:11px; color:var(--text-muted); line-height:1.3; background:rgba(0,0,0,0.06); padding:4px 8px; border-radius:6px;">
+              ${c.zona ? `📍 <strong>${escapeHtml(c.zona)}</strong><br>` : ''}
+              ${c.direccion ? `🏠 ${escapeHtml(c.direccion)}` : ''}
+            </div>
+          ` : ''}
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:6px; border-top:1px dashed var(--border-color); padding-top:6px; margin-top:4px;">
+          <button type="button" class="secondary-button" onclick="window.editClientFromSettingsByIndex('${escapeHtml(c.name)}')" style="font-size:11px; padding:4px 8px; background:#0ea5e9; color:white; border:none; border-radius:4px; cursor:pointer;" title="Editar nombre, teléfono o delivery">
+            ✏️ Editar
+          </button>
+          <button type="button" class="secondary-button" onclick="window.deleteClientFromSettings('${escapeHtml(c.name)}')" style="font-size:11px; padding:4px 8px; background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); border-radius:4px; cursor:pointer;" title="Eliminar cliente">
+            🗑️
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+};
+
+window.editClientFromSettingsByIndex = function(clientName) {
+  const c = (state.frequentClients || []).find(x => (x.name||"").trim().toLowerCase() === String(clientName||"").trim().toLowerCase());
+  if (c) {
+    openEditClientModal(c, () => {
+      window.renderClientDirectorySettings();
+    });
+  }
+};
+
+window.setClientDirectoryFilter = function(filter, btn) {
+  document.querySelectorAll(".client-filter-chip").forEach(el => el.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  window.renderClientDirectorySettings(filter);
+};
+
+window.filterClientsSettings = function(query) {
+  window.renderClientDirectorySettings(window._currentClientDirFilter || 'all', query);
+};
+
+window.cleanDuplicateClients = async function() {
+  const confirmed = confirm("¿Deseas analizar y limpiar clientes duplicados en Google Sheets?\n\nEl sistema fusionará las filas de clientes que tengan el mismo nombre, consolidando su teléfono y datos de entrega.");
+  if (!confirmed) return;
+
+  try {
+    showToast("🧹 Analizando y depurando duplicados en Google Sheets...");
+    const res = await api("profile_clean_duplicate_clients", {});
+    if (res && res.ok) {
+      alert(`✅ Limpieza completada exitosamente:\n- ${res.eliminados || 0} filas duplicadas depuradas.\n- ${res.actualizados || 0} clientes consolidados.`);
+      await refresh(true);
+      window.renderClientDirectorySettings();
+    } else {
+      throw new Error(res?.mensaje || "Error al limpiar duplicados.");
+    }
+  } catch(err) {
+    console.error(err);
+    alert(`Error: ${err.message}`);
+  }
+};
+
+window.deleteClientFromSettings = async function(clientName) {
+  if (!confirm(`¿Estás seguro de eliminar al cliente "${clientName}" del directorio?`)) return;
+  try {
+    showToast(`Eliminando cliente "${clientName}"...`);
+    const res = await api("profile_delete_client", { name: clientName });
+    if (res && res.ok) {
+      showToast("✅ Cliente eliminado.");
+      await refresh(true);
+      window.renderClientDirectorySettings();
+    } else {
+      throw new Error(res?.mensaje || "Error al eliminar cliente.");
+    }
+  } catch(err) {
+    console.error(err);
+    alert(`Error al eliminar cliente: ${err.message}`);
+  }
+};
+
+window.openNewClientModalFromSettings = function(defaultName = "") {
+  openModal(`
+    <div class="modal-head">
+      <h2>👤➕ Registrar Nuevo Cliente</h2>
+      <button class="close-button" data-action="close">✕</button>
+    </div>
+    <form id="new-client-form" class="form-grid">
+      <label class="field"><span class="field-label">NOMBRE DEL CLIENTE</span>
+        <input name="name" required value="${escapeHtml(defaultName)}" placeholder="Nombre y apellido o empresa">
+      </label>
+      <label class="field"><span class="field-label">TELÉFONO / WHATSAPP</span>
+        <input name="phone" type="tel" placeholder="Ej. 04141234567 o 58414...">
+      </label>
+      <label class="field"><span class="field-label">¿REQUIERE DELIVERY?</span>
+        <select name="delivery">
+          <option value="No" selected>No — Retira en tienda / taller</option>
+          <option value="Sí">Sí — Se le lleva a domicilio</option>
+        </select>
+      </label>
+      <label class="field"><span class="field-label">ZONA / SECTOR</span>
+        <input name="zona" placeholder="Ej. Norte, Milagro, La Lago...">
+      </label>
+      <label class="field"><span class="field-label">DIRECCIÓN DE ENTREGA</span>
+        <input name="direccion" placeholder="Ej. Calle 72, Edif. Apolo, Apto 4">
+      </label>
+      <div class="modal-footer">
+        <button type="button" class="secondary-button" data-action="close">Cancelar</button>
+        <button type="submit" class="primary-button">💾 Guardar Cliente</button>
+      </div>
+    </form>
+  `);
+
+  $("#new-client-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector(".primary-button");
+    btn.disabled = true;
+    btn.textContent = "Guardando...";
+    try {
+      const formPayload = Object.fromEntries(new FormData(e.target));
+      await api("profile_create_client", formPayload);
+      closeModal();
+      await refresh(false);
+      showToast(`✅ Cliente "${formPayload.name}" guardado exitosamente.`);
+      if (typeof window.renderClientDirectorySettings === "function") {
+        window.renderClientDirectorySettings();
+      }
+    } catch(err) {
+      btn.disabled = false;
+      btn.textContent = "💾 Guardar Cliente";
+      alert(`Error al guardar cliente: ${err.message}`);
+    }
+  });
 };
 
 window.filterMotivosChips = function(query) {
@@ -5523,12 +5953,18 @@ function detail(order) {
                   </a>
                 </div>
               ` : ''}
-
               ${refLinks.length ? `
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
-            ${refLinks.map((link, idx) => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="secondary-button" style="color:var(--primary-color);">🖼️ Ref ${idx + 1}</a>`).join("")}
+            ${refLinks.map((link, idx) => {
+              const lLower = link.toLowerCase();
+              const isVid = lLower.includes('.mp4') || lLower.includes('.webm') || lLower.includes('.mov') || lLower.includes('tiktok.com') || lLower.includes('instagram.com') || lLower.includes('youtube.com');
+              if (isVid) {
+                return `<button type="button" class="secondary-button ref-video-badge" onclick="window.openVideoRefModal('${escapeHtml(link)}')" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; background:#111827; color:#38bdf8; border:1px solid #38bdf8; padding:5px 10px; font-size:12px; font-weight:bold; border-radius:6px;">🎥 Ver Video Ref ${idx + 1} ▶</button>`;
+              }
+              return `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="secondary-button" style="color:var(--primary-color);">🖼️ Ref ${idx + 1}</a>`;
+            }).join("")}
           </div>
-        ` : `<p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0;">Sin fotos de referencia adjuntas. Puedes añadirlas ahora.</p>`}
+        ` : `<p style="font-size:12px; color:var(--text-muted); margin:4px 0 0 0;">Sin fotos ni videos de referencia adjuntos. Puedes añadirlos ahora.</p>`}
       </div>
 
       ${eviLinks.length ? `
@@ -6717,31 +7153,33 @@ function openAddRefImagesModal(orderOrId) {
 }
 window.openAddRefImagesModal = openAddRefImagesModal;
 
-function openEditClientModal(client) {
+function openEditClientModal(client, onSavedCallback) {
   openModal(`
     <div class="modal-head">
-      <h2>✏️ Editar Cliente Frecuente</h2>
+      <h2>✏️ Editar Datos de Cliente</h2>
       <button class="close-button" data-action="close">×</button>
     </div>
     <form id="edit-client-form" class="form-grid">
-      <input type="hidden" name="originalName" value="${escapeHtml(client.name)}">
+      <input type="hidden" name="originalName" value="${escapeHtml(client.name || client.nombre || '')}">
       <label class="field"><span class="field-label">NOMBRE DEL CLIENTE</span>
-        <input name="name" required value="${escapeHtml(client.name)}">
+        <input name="name" required value="${escapeHtml(client.name || client.nombre || '')}">
       </label>
-      <label class="field"><span class="field-label">TELÉFONO / WHATSAPP</span>
-        <input name="phone" type="tel" value="${escapeHtml(client.phone || '')}" placeholder="04XXXXXXXXX">
+      <label class="field">
+        <span class="field-label">TELÉFONO / WHATSAPP ${!client.phone ? '<strong style="color:#ef4444;">(⚠️ FALTANTE)</strong>' : ''}</span>
+        <input name="phone" type="tel" value="${escapeHtml(client.phone || client.telefono || '')}" placeholder="Ej. 04141234567 o 58414..." ${!client.phone ? 'autofocus style="border-color:#ef4444;"' : ''}>
+        <small style="color:var(--text-muted); font-size:11px;">Al guardar, este número se asociará a sus pedidos y autocompletados.</small>
       </label>
       <label class="field"><span class="field-label">¿REQUIERE DELIVERY?</span>
         <select name="delivery">
-          <option value="No" ${client.delivery !== 'Sí' ? 'selected' : ''}>No – Retira en tienda</option>
+          <option value="No" ${client.delivery !== 'Sí' ? 'selected' : ''}>No – Retira en tienda / taller</option>
           <option value="Sí" ${client.delivery === 'Sí' ? 'selected' : ''}>Sí – Se le lleva a domicilio</option>
         </select>
       </label>
-      <label class="field"><span class="field-label">ZONA / SECTOR (Ej: Norte, Los Palos Grandes)</span>
-        <input name="zona" value="${escapeHtml(client.zona || '')}" placeholder="Ej. Norte, Sur...">
+      <label class="field"><span class="field-label">ZONA / SECTOR (Ej: Norte, San Francisco, Curva)</span>
+        <input name="zona" value="${escapeHtml(client.zona || '')}" placeholder="Ej. Norte, Milagro, La Lago...">
       </label>
       <label class="field"><span class="field-label">DIRECCIÓN DE ENTREGA</span>
-        <input name="direccion" value="${escapeHtml(client.direccion || '')}" placeholder="Ej. Calle 5...">
+        <input name="direccion" value="${escapeHtml(client.direccion || '')}" placeholder="Ej. Calle 72, Edif. Apolo, Apto 4">
       </label>
       <div class="modal-footer">
         <button type="button" class="secondary-button" data-action="close">Cancelar</button>
@@ -6754,18 +7192,111 @@ function openEditClientModal(client) {
     e.preventDefault();
     const btn = e.target.querySelector(".primary-button");
     btn.disabled = true;
+    btn.textContent = "Guardando...";
     try {
-      await api("profile_edit_client", Object.fromEntries(new FormData(e.target)));
+      const formPayload = Object.fromEntries(new FormData(e.target));
+      await api("profile_edit_client", formPayload);
       closeModal();
       await refresh(false);
       showToast("✅ Cliente actualizado con éxito.");
+
+      if (typeof onSavedCallback === "function") {
+        onSavedCallback(formPayload);
+      } else {
+        const expCli = document.getElementById("express-cliente");
+        const expTel = document.getElementById("express-telefono");
+        if (expCli && expTel) {
+          expCli.value = formPayload.name;
+          if (formPayload.phone) expTel.value = formPayload.phone;
+        }
+        const stdCli = document.getElementById("input-cliente");
+        const stdTel = document.getElementById("input-telefono");
+        if (stdCli && stdTel) {
+          stdCli.value = formPayload.name;
+          if (formPayload.phone) stdTel.value = formPayload.phone;
+        }
+        if (typeof window.renderClientDirectorySettings === "function") {
+          window.renderClientDirectorySettings();
+        }
+      }
     } catch(err) {
       btn.disabled = false;
+      btn.textContent = "💾 Guardar Cambios";
       alert(`Error al editar cliente: ${err.message}`);
     }
   });
 }
 window.openEditClientModal = openEditClientModal;
+
+window.openVideoRefModal = function(videoUrl) {
+  if (!videoUrl) return;
+  const url = videoUrl.trim();
+  const uLower = url.toLowerCase();
+  const isDirect = uLower.endsWith(".mp4") || uLower.endsWith(".webm") || uLower.endsWith(".mov");
+  const isDrive = url.includes("drive.google.com");
+  const isTikTok = url.includes("tiktok.com");
+  const isReels = url.includes("instagram.com");
+
+  let contentHtml = '';
+  if (isDirect) {
+    contentHtml = `
+      <div style="background:#000; border-radius:10px; overflow:hidden; display:flex; justify-content:center; align-items:center; min-height:280px;">
+        <video src="${escapeHtml(url)}" controls autoplay playsinline style="max-width:100%; max-height:65vh; border-radius:8px;"></video>
+      </div>
+    `;
+  } else if (isDrive) {
+    const previewUrl = url.replace(/\/view(\?.*)?$/, "/preview");
+    contentHtml = `
+      <div style="background:#000; border-radius:10px; overflow:hidden;">
+        <iframe src="${escapeHtml(previewUrl)}" style="width:100%; height:450px; border:none; border-radius:8px;" allow="autoplay"></iframe>
+      </div>
+    `;
+  } else if (isTikTok || isReels) {
+    contentHtml = `
+      <div style="text-align:center; padding:24px 16px; background:linear-gradient(135deg, rgba(17,24,39,0.95), rgba(30,41,59,0.95)); border-radius:12px; border:1px solid #38bdf8;">
+        <div style="font-size:42px; margin-bottom:10px;">🎵 🎥</div>
+        <h3 style="margin:0 0 8px 0; color:#38bdf8; font-size:18px;">Video de Referencia ${isTikTok ? 'TikTok' : 'Instagram Reel'}</h3>
+        <p style="font-size:12.5px; color:#cbd5e1; max-width:440px; margin:0 auto 16px auto; line-height:1.5;">
+          El cliente envió este video como referencia directa de su diseño o temática. Puedes abrirlo directamente en la app o navegador:
+        </p>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="primary-button" style="background:#0284c7; color:white; text-decoration:none; display:inline-flex; align-items:center; gap:8px; padding:10px 18px; font-weight:bold; border-radius:8px; font-size:13px;">
+            <i class="fas fa-external-link-alt"></i> Abrir Video en ${isTikTok ? 'TikTok' : 'Instagram'}
+          </a>
+          <button type="button" class="secondary-button" onclick="navigator.clipboard.writeText('${escapeHtml(url)}'); showToast('📋 Enlace copiado al portapapeles');" style="padding:10px 14px; font-size:13px; font-weight:bold;">
+            📋 Copiar Enlace
+          </button>
+        </div>
+        <div style="margin-top:14px; font-size:11px; color:#94a3b8; word-break:break-all;">
+          ${escapeHtml(url)}
+        </div>
+      </div>
+    `;
+  } else {
+    contentHtml = `
+      <div style="text-align:center; padding:20px; background:var(--bg-main); border-radius:10px;">
+        <p style="font-size:13px; color:var(--text-main); margin-bottom:14px;">Enlace multimedia de referencia:</p>
+        <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="primary-button" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px; padding:10px 18px;">
+          Abrir Enlace de Referencia ↗
+        </a>
+      </div>
+    `;
+  }
+
+  openModal(`
+    <div class="modal-head">
+      <h2>🎥 Video de Referencia</h2>
+      <button class="close-button" data-action="close">✕</button>
+    </div>
+    <div style="padding:4px 0 10px 0;">
+      ${contentHtml}
+    </div>
+    <div class="modal-footer" style="margin-top:12px;">
+      <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="secondary-button" style="text-decoration:none; font-size:12px;">Abrir en pestaña nueva ↗</a>
+      <button type="button" class="primary-button" data-action="close">Cerrar</button>
+    </div>
+  `);
+};
 
 function openLearningGuideModal() {
   const isManager = state.session && (state.session.role === 'manager' || state.session.role === 'jefe' || state.session.role === 'jefa');
@@ -7333,7 +7864,7 @@ window.copyWaTextAndNotify = async function(idOrd, tel, encMsg) {
 
 function formOrder() {
   const users = (state.data.users || []).filter(u => u.active);
-  const clients = state.frequentClients;
+  const clients = [...(state.frequentClients || [])].sort((a,b) => (a.name||"").localeCompare(b.name||"", 'es', {sensitivity:'base'}));
   const types = state.frequentTypes;
   const motivos = state.frequentMotivos || [];
   
@@ -7358,8 +7889,13 @@ function formOrder() {
 
     <form id="order-form" class="form-grid">
       ${clients.length ? `
-        <label class="field"><span class="field-label">SELECCIONAR CLIENTE GUARDADO</span>
-          <select id="fc-select"><option value="">-- Autocompletar datos --</option>${clients.map((c, i) => `<option value="${i}">${escapeHtml(c.name)} (${escapeHtml(c.phone || "Sin tel.")})</option>`).join("")}</select>
+        <label class="field"><span class="field-label">SELECCIONAR CLIENTE GUARDADO (ORDEN ALFABÉTICO)</span>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <select id="fc-select" style="flex:1;"><option value="">-- Autocompletar datos --</option>${clients.map((c, i) => `<option value="${i}">${escapeHtml(c.name)} (${escapeHtml(c.phone || "⚠️ Sin tel.")})</option>`).join("")}</select>
+            <button type="button" id="fc-edit-btn" class="secondary-button" style="display:none; padding:6px 10px; font-size:12px; white-space:nowrap; background:#0ea5e9; color:white; border:none; border-radius:6px; font-weight:700;" title="Editar datos o número de este cliente">
+              ✏️ Editar Contacto
+            </button>
+          </div>
         </label>` : ''}
       <div id="delivery-warning" class="delivery-warning-box" style="display:none;"></div>
       <label class="field"><span class="field-label">NOMBRE DEL CLIENTE</span>
@@ -7422,18 +7958,33 @@ function formOrder() {
       </label>
 
       <div class="field">
-        <span class="field-label">🖼️ FOTOS DE REFERENCIA DEL CLIENTE (MÚLTIPLES FOTOS - HASTA 30):</span>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-          <button type="button" class="secondary-button" id="form-cam-ref-btn" style="background:#0284c7; color:white; border:none; display:flex; align-items:center; gap:6px; font-size:12px; padding:6px 10px; font-weight:bold;">
-            📸 Tomar con Cámara Directa
-          </button>
-          <label class="secondary-button" style="cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px; padding:6px 10px; margin:0;">
-            📁 Elegir de Archivos
-            <input type="file" id="reference-files-input" accept="image/*" multiple style="display:none;">
-          </label>
+        <span class="field-label">📸 / 🎥 ARCHIVOS Y ENLACES DE REFERENCIA (FOTOS, VIDEOS, TIKTOK - HASTA 30):</span>
+        
+        <!-- Drag & Drop Zone and Actions -->
+        <div id="form-ref-dropzone" class="ref-dropzone-box" style="margin-bottom:8px;">
+          <div style="font-size:22px; margin-bottom:4px;">📥 📋</div>
+          <div style="font-weight:700; font-size:13px; margin-bottom:2px;">
+            Arrastra tus fotos/videos aquí o presiona <kbd style="background:var(--bg-main); border:1px solid var(--border-color); padding:1px 5px; border-radius:4px; font-weight:bold;">Ctrl + V</kbd> para pegar directamente
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+            Pega capturas copiadas de WhatsApp Web sin necesidad de descargarlas. Admite fotos, videos (.mp4, .webm, .mov) y enlaces de TikTok / Reels.
+          </div>
+          <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+            <label class="secondary-button" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:6px 12px; margin:0;">
+              📁 Elegir Archivos / Video
+              <input type="file" id="reference-files-input" accept="image/*,video/mp4,video/webm,video/quicktime,video/*" multiple style="display:none;">
+            </label>
+            <button type="button" class="secondary-button" id="form-cam-ref-btn" style="background:#0284c7; color:white; border:none; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:6px 12px;">
+              📷 Tomar Foto
+            </button>
+            <button type="button" class="secondary-button" id="form-tiktok-ref-btn" style="background:#111827; color:#38bdf8; border:1px solid #38bdf8; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:6px 12px;" title="Pegar enlace de TikTok, Reels o YouTube">
+              🎵 Pegar Link TikTok / Video
+            </button>
+          </div>
         </div>
-        <div id="form-ref-thumbs" style="display:flex; gap:6px; flex-wrap:wrap; min-height:36px; align-items:center; background:var(--bg-main); padding:6px; border-radius:6px; border:1px dashed var(--border-color);">
-          <span style="color:var(--text-muted); font-size:12px;">Sin fotos de referencia seleccionadas.</span>
+
+        <div id="form-ref-thumbs" style="display:flex; gap:8px; flex-wrap:wrap; min-height:42px; align-items:center; background:var(--bg-main); padding:8px; border-radius:8px; border:1px dashed var(--border-color);">
+          <span style="color:var(--text-muted); font-size:12px;">Sin fotos ni videos de referencia seleccionados.</span>
         </div>
       </div>
 
@@ -7529,21 +8080,142 @@ function formOrder() {
     const listEl = document.getElementById("form-ref-thumbs");
     if (!listEl) return;
     if (!formCapturedImages.length) {
-      listEl.innerHTML = '<span style="color:var(--text-muted); font-size:12px;">Sin fotos de referencia seleccionadas.</span>';
+      listEl.innerHTML = '<span style="color:var(--text-muted); font-size:12px;">Sin fotos ni videos de referencia seleccionados.</span>';
       return;
     }
-    listEl.innerHTML = formCapturedImages.map((img, idx) => `
-      <div style="position:relative; display:inline-block; border-radius:6px; overflow:hidden; border:1px solid var(--border-color);">
-        <img src="data:image/jpeg;base64,${img.data}" style="width:55px; height:55px; object-fit:cover; display:block;">
-        <button type="button" onclick="removeFormRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.85); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:9px; cursor:pointer; display:flex; align-items:center; justify-content:center;">×</button>
-      </div>
-    `).join("");
+    listEl.innerHTML = formCapturedImages.map((img, idx) => {
+      if (img.isUrl) {
+        return `
+          <div class="ref-video-thumb-container" style="position:relative; width:65px; height:65px; border-radius:8px; overflow:hidden; border:1.5px solid #0ea5e9; background:#0f172a; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#38bdf8;">
+            <i class="fab fa-tiktok" style="font-size:18px; margin-bottom:2px;"></i>
+            <span style="font-size:9px; font-weight:800; text-align:center; padding:0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60px;">Link Video</span>
+            <button type="button" onclick="removeFormRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.9); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+          </div>
+        `;
+      }
+      if (img.isVideo) {
+        return `
+          <div class="ref-video-thumb-container" style="position:relative; width:65px; height:65px; border-radius:8px; overflow:hidden; border:1.5px solid #8b5cf6; background:#1e1b4b; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#a78bfa;">
+            <i class="fas fa-video" style="font-size:18px; margin-bottom:2px;"></i>
+            <span style="font-size:9px; font-weight:800; text-align:center; padding:0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60px;">Video .mp4</span>
+            <button type="button" onclick="removeFormRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.9); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+          </div>
+        `;
+      }
+      return `
+        <div style="position:relative; display:inline-block; border-radius:8px; overflow:hidden; border:1px solid var(--border-color); width:65px; height:65px;">
+          <img src="data:${img.mimeType || 'image/jpeg'};base64,${img.data}" style="width:100%; height:100%; object-fit:cover; display:block;">
+          <button type="button" onclick="removeFormRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.9); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+        </div>
+      `;
+    }).join("");
   };
 
   window.removeFormRefThumb = function(idx) {
     formCapturedImages.splice(idx, 1);
     updateFormRefThumbs();
   };
+
+  const processRefFile = async (f) => {
+    if (!f || formCapturedImages.length >= 30) return;
+    const isVid = (f.type && f.type.startsWith("video/")) || /\.(mp4|webm|mov|mkv)$/i.test(f.name || "");
+    if (isVid) {
+      if (f.size > 40 * 1024 * 1024) {
+        alert("El archivo de video supera el límite de 40MB. Por favor sube un clip más corto o pega el enlace de TikTok.");
+        return;
+      }
+      showToast("⏳ Cargando video de referencia...");
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+      formCapturedImages.push({
+        data: base64,
+        mimeType: f.type || "video/mp4",
+        isVideo: true,
+        name: f.name || "video_referencia.mp4"
+      });
+      showToast("🎥 Video añadido a las referencias.");
+    } else {
+      const compressed = await compressImageFile(f);
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+        reader.readAsDataURL(compressed);
+      });
+      formCapturedImages.push({
+        data: base64,
+        mimeType: "image/jpeg",
+        isVideo: false,
+        name: f.name || "foto_referencia.jpg"
+      });
+    }
+    updateFormRefThumbs();
+  };
+
+  // Drag & drop en formOrder
+  const dropZone = document.getElementById("form-ref-dropzone");
+  if (dropZone) {
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+    dropZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      const files = Array.from(e.dataTransfer?.files || []);
+      for (const f of files) {
+        await processRefFile(f);
+      }
+    });
+  }
+
+  // Soporte Ctrl+V para pegar desde WhatsApp Web
+  const formOrderPasteHandler = async (e) => {
+    if (!document.getElementById("modal")?.classList.contains("open")) return;
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+    let pastedAny = false;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("video") !== -1) {
+        const f = items[i].getAsFile();
+        if (f) {
+          pastedAny = true;
+          await processRefFile(f);
+        }
+      }
+    }
+    if (pastedAny) {
+      showToast("📋 Referencia pegada exitosamente desde el portapapeles (Ctrl+V).");
+    }
+  };
+  window.removeEventListener("paste", window._jjFormOrderPasteHandler);
+  window._jjFormOrderPasteHandler = formOrderPasteHandler;
+  window.addEventListener("paste", formOrderPasteHandler);
+
+  // Botón pegar enlace de TikTok / Video
+  document.getElementById("form-tiktok-ref-btn")?.addEventListener("click", () => {
+    const url = prompt("Pega el enlace del video (TikTok, Instagram Reel, YouTube o Google Drive):");
+    if (!url || !url.trim()) return;
+    const trimmed = url.trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      alert("Por favor ingresa un enlace web válido (debe iniciar con http:// o https://).");
+      return;
+    }
+    formCapturedImages.push({
+      isUrl: true,
+      url: trimmed,
+      isVideo: true,
+      name: "Video Enlace"
+    });
+    updateFormRefThumbs();
+    showToast("🎵 Enlace de video añadido a las referencias.");
+  });
 
   document.getElementById("form-cam-ref-btn")?.addEventListener("click", () => {
     if (formCapturedImages.length >= 30) {
@@ -7552,7 +8224,6 @@ function formOrder() {
     }
     openLiveCameraModal((base64) => {
       formCapturedImages.push({ data: base64, mimeType: "image/jpeg" });
-      formOrder();
       updateFormRefThumbs();
     });
   });
@@ -7560,16 +8231,8 @@ function formOrder() {
   document.getElementById("reference-files-input")?.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
     for (const f of files) {
-      if (formCapturedImages.length >= 30) break;
-      const compressed = await compressImageFile(f);
-      const base64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
-        reader.readAsDataURL(compressed);
-      });
-      formCapturedImages.push({ data: base64, mimeType: "image/jpeg" });
+      await processRefFile(f);
     }
-    updateFormRefThumbs();
   });
 
   $("#magic-paste-btn")?.addEventListener("click", () => {
@@ -7592,14 +8255,16 @@ function formOrder() {
   });
 
   $("#fc-select")?.addEventListener("change", (e) => {
+    const editBtn = document.getElementById("fc-edit-btn");
     if (e.target.value !== "") {
       const c = clients[e.target.value];
+      if (editBtn) editBtn.style.display = "inline-flex";
       if (c) {
         $("#input-cliente").value = c.name || "";
         $("#input-telefono").value = c.phone || "";
         const deliveryWarn = document.getElementById("delivery-warning");
         if (deliveryWarn) {
-          if (c.delivery === "Sí") {
+          if (c.delivery === "Sí" || c.delivery === "SI" || c.delivery === "SA-") {
             deliveryWarn.style.display = "block";
             deliveryWarn.innerHTML = `🚚 <strong>Cliente con DELIVERY A DOMICILIO</strong><br>📍 <strong>Sector / Zona:</strong> ${escapeHtml(c.zona || 'No especificada')}<br>🏠 <strong>Dirección:</strong> ${escapeHtml(c.direccion || 'No especificada')}<br>⚠️ <em>El pedido DEBE quedar listo el día anterior al fin de jornada.</em>`;
           } else {
@@ -7607,6 +8272,18 @@ function formOrder() {
           }
         }
       }
+    } else {
+      if (editBtn) editBtn.style.display = "none";
+    }
+  });
+
+  document.getElementById("fc-edit-btn")?.addEventListener("click", () => {
+    const val = $("#fc-select")?.value;
+    if (val !== "" && clients[val]) {
+      openEditClientModal(clients[val], (updated) => {
+        $("#input-cliente").value = updated.name || "";
+        $("#input-telefono").value = updated.phone || "";
+      });
     }
   });
 
@@ -8794,11 +9471,11 @@ window.triggerOcrForExpressInvoice = async function(base64Image) {
 };
 
 window.openExpressOrderModal = function() {
-  const clients = state.data?.clients || state.frequentClients || [];
+  const clients = [...(state.data?.clients || state.frequentClients || [])].sort((a,b) => (a.name || a.nombre || "").localeCompare(b.name || b.nombre || "", 'es', {sensitivity:'base'}));
   const types = state.frequentTypes || ["Topper", "Stickers", "Taza Sublimada", "Invitación Digital", "Letras 3D", "Pendón", "Caja Sorpresa", "Maqueta"];
   const motivos = state.frequentMotivos || [];
   let expressInvoiceBase64 = "";
-  let expressRefBase64 = "";
+  let expressRefItems = [];
 
   openModal(`
     <div class="modal-head">
@@ -8818,10 +9495,15 @@ window.openExpressOrderModal = function() {
       <label class="field">
         <span class="field-label">CLIENTE DEL LOCAL:</span>
         ${clients.length ? `
-          <select id="express-client-select" style="margin-bottom:6px; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:6px 8px;">
-            <option value="">-- Seleccionar cliente guardado o tipear abajo --</option>
-            ${clients.map(c => `<option value="${escapeHtml(c.name || c.nombre)}" data-phone="${escapeHtml(c.phone || c.telefono || '')}">${escapeHtml(c.name || c.nombre)} ${c.phone || c.telefono ? `(${escapeHtml(c.phone || c.telefono)})` : ''}</option>`).join('')}
-          </select>
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <select id="express-client-select" style="flex:1; font-size:12px; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:6px 8px;">
+              <option value="">-- Seleccionar cliente guardado (A-Z) o tipear abajo --</option>
+              ${clients.map(c => `<option value="${escapeHtml(c.name || c.nombre)}" data-phone="${escapeHtml(c.phone || c.telefono || '')}">${escapeHtml(c.name || c.nombre)} ${c.phone || c.telefono ? `(${escapeHtml(c.phone || c.telefono)})` : '(⚠️ Sin tel.)'}</option>`).join('')}
+            </select>
+            <button type="button" id="express-edit-client-btn" class="secondary-button" style="display:none; padding:4px 8px; font-size:11px; white-space:nowrap; background:#0ea5e9; color:white; border:none; border-radius:6px; font-weight:bold;" title="Editar datos o número de este cliente">
+              ✏️ Editar
+            </button>
+          </div>
         ` : ''}
         <div style="display:flex; gap:6px;">
           <input type="text" id="express-cliente" name="cliente" required placeholder="Nombre del cliente en mostrador" style="flex:1;">
@@ -8948,29 +9630,30 @@ window.openExpressOrderModal = function() {
         </div>
       </div>
 
-      <!-- FOTO DE REFERENCIA DEL CLIENTE -->
-      <div class="physical-invoice-box" id="express-ref-box" style="margin-bottom:12px; border-color:#0ea5e9;">
-        <div class="physical-invoice-header">
+      <!-- FOTOS Y VIDEOS DE REFERENCIA DEL CLIENTE -->
+      <div class="physical-invoice-box ref-dropzone-box" id="express-ref-box" style="margin-bottom:12px; border-color:#0ea5e9; background:rgba(14,165,233,0.03);">
+        <div class="physical-invoice-header" style="flex-wrap:wrap; gap:6px;">
           <span style="font-size:11px; font-weight:800; color:#0ea5e9; text-transform:uppercase;">
-            🖼️ Fotos de Referencia del Cliente (Diseño):
+            📸 / 🎥 Referencias (Fotos, Videos, TikTok):
           </span>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button type="button" class="secondary-button" id="express-cam-ref-btn" style="background:#0ea5e9; color:white; border:none; padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer;">
-              📸 Tomar Foto
+              📷 Foto
             </button>
-            <label class="secondary-button" style="background:var(--bg-main); border:1px solid var(--border-color); padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer;">
-              📁 Subir Archivo
-              <input type="file" id="express-file-ref" accept="image/*" style="display:none;">
+            <label class="secondary-button" style="background:var(--bg-main); border:1px solid var(--border-color); padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer; margin:0;">
+              📁 Archivos / Video
+              <input type="file" id="express-file-ref" accept="image/*,video/mp4,video/webm,video/quicktime,video/*" multiple style="display:none;">
             </label>
+            <button type="button" class="secondary-button" id="express-tiktok-ref-btn" style="background:#111827; color:#38bdf8; border:1px solid #38bdf8; padding:4px 8px; font-size:11px; font-weight:bold; border-radius:6px; cursor:pointer;" title="Pegar enlace de TikTok o Reels">
+              🎵 TikTok
+            </button>
           </div>
         </div>
-        <div id="express-ref-preview-wrap" style="display:none;" class="physical-invoice-preview">
-          <img id="express-ref-img" class="physical-invoice-thumb" src="" alt="Referencia Cliente">
-          <div style="flex:1; font-size:11.5px;">
-            <strong style="color:#0ea5e9;"><i class="fas fa-check-circle"></i> Referencia Adjunta</strong>
-            <div style="color:var(--text-muted); font-size:10.5px;">Visible directamente para diseñadores y armadores en taller.</div>
-          </div>
-          <button type="button" class="subitem-del-btn" id="express-ref-del-btn" title="Eliminar foto">🗑️</button>
+        <div style="font-size:10.5px; color:var(--text-muted); margin:4px 0 6px 0;">
+          Arrastra fotos/videos aquí o presiona <kbd style="font-weight:bold; border:1px solid var(--border-color); padding:0 3px; border-radius:3px;">Ctrl + V</kbd> para pegar capturas de WhatsApp Web.
+        </div>
+        <div id="express-ref-thumbs-list" style="display:flex; gap:6px; flex-wrap:wrap; min-height:36px; align-items:center; background:var(--bg-main); padding:6px; border-radius:6px; border:1px dashed var(--border-color);">
+          <span style="color:var(--text-muted); font-size:11px;">Sin referencias seleccionadas aún.</span>
         </div>
       </div>
 
@@ -9061,13 +9744,31 @@ window.openExpressOrderModal = function() {
 
   // Cliente frecuente select
   const selCli = document.getElementById("express-client-select");
+  const editCliBtn = document.getElementById("express-edit-client-btn");
   if (selCli) {
     selCli.addEventListener("change", (e) => {
       const opt = selCli.options[selCli.selectedIndex];
       if (opt && opt.value) {
+        if (editCliBtn) editCliBtn.style.display = "inline-flex";
         document.getElementById("express-cliente").value = opt.value;
         const ph = opt.getAttribute("data-phone");
         if (ph) document.getElementById("express-telefono").value = ph;
+      } else {
+        if (editCliBtn) editCliBtn.style.display = "none";
+      }
+    });
+  }
+  if (editCliBtn) {
+    editCliBtn.addEventListener("click", () => {
+      const opt = selCli?.options[selCli.selectedIndex];
+      if (opt && opt.value) {
+        const clientObj = clients.find(c => (c.name || c.nombre) === opt.value);
+        if (clientObj) {
+          openEditClientModal(clientObj, (updated) => {
+            document.getElementById("express-cliente").value = updated.name || "";
+            document.getElementById("express-telefono").value = updated.phone || "";
+          });
+        }
       }
     });
   }
@@ -9180,54 +9881,161 @@ window.openExpressOrderModal = function() {
     });
   }
 
-  // FOTO REFERENCIA CLIENTE
-  const fileRefInp = document.getElementById("express-file-ref");
-  const camRefBtn = document.getElementById("express-cam-ref-btn");
-  const previewRefWrap = document.getElementById("express-ref-preview-wrap");
-  const previewRefImg = document.getElementById("express-ref-img");
-  const delRefBtn = document.getElementById("express-ref-del-btn");
+  // === GESTIÓN DE REFERENCIAS MULTI-FORMATO (FOTOS, VIDEOS, TIKTOK) ===
+  const updateExpressRefThumbs = () => {
+    const listEl = document.getElementById("express-ref-thumbs-list");
+    if (!listEl) return;
+    if (!expressRefItems.length) {
+      listEl.innerHTML = '<span style="color:var(--text-muted); font-size:11px;">Sin referencias seleccionadas aún.</span>';
+      return;
+    }
+    listEl.innerHTML = expressRefItems.map((img, idx) => {
+      if (img.isUrl) {
+        return `
+          <div class="ref-video-thumb-container" style="position:relative; width:58px; height:58px; border-radius:6px; overflow:hidden; border:1.5px solid #0ea5e9; background:#0f172a; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#38bdf8;">
+            <i class="fab fa-tiktok" style="font-size:16px; margin-bottom:2px;"></i>
+            <span style="font-size:8.5px; font-weight:800; text-align:center; padding:0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:54px;">Link Video</span>
+            <button type="button" onclick="window.removeExpressRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.9); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">✕</button>
+          </div>
+        `;
+      }
+      if (img.isVideo) {
+        return `
+          <div class="ref-video-thumb-container" style="position:relative; width:58px; height:58px; border-radius:6px; overflow:hidden; border:1.5px solid #8b5cf6; background:#1e1b4b; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#a78bfa;">
+            <i class="fas fa-video" style="font-size:16px; margin-bottom:2px;"></i>
+            <span style="font-size:8.5px; font-weight:800; text-align:center; padding:0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:54px;">Video</span>
+            <button type="button" onclick="window.removeExpressRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.9); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">✕</button>
+          </div>
+        `;
+      }
+      return `
+        <div style="position:relative; display:inline-block; border-radius:6px; overflow:hidden; border:1px solid var(--border-color); width:58px; height:58px;">
+          <img src="data:${img.mimeType || 'image/jpeg'};base64,${img.data}" style="width:100%; height:100%; object-fit:cover; display:block;">
+          <button type="button" onclick="window.removeExpressRefThumb(${idx})" style="position:absolute; top:2px; right:2px; background:rgba(220,38,38,0.9); color:white; border:none; border-radius:50%; width:16px; height:16px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">✕</button>
+        </div>
+      `;
+    }).join("");
+  };
 
+  window.removeExpressRefThumb = function(idx) {
+    expressRefItems.splice(idx, 1);
+    updateExpressRefThumbs();
+  };
+
+  const processExpressRefFile = async (f) => {
+    if (!f || expressRefItems.length >= 20) return;
+    const isVid = (f.type && f.type.startsWith("video/")) || /\.(mp4|webm|mov|mkv)$/i.test(f.name || "");
+    if (isVid) {
+      if (f.size > 40 * 1024 * 1024) {
+        alert("El archivo de video supera el límite de 40MB. Por favor sube un clip más corto o pega el enlace de TikTok.");
+        return;
+      }
+      showToast("⏳ Cargando video de referencia...");
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+      expressRefItems.push({
+        data: base64,
+        mimeType: f.type || "video/mp4",
+        isVideo: true,
+        name: f.name || "video_referencia.mp4"
+      });
+      showToast("🎥 Video añadido a las referencias.");
+    } else {
+      let base64 = "";
+      if (typeof compressImageFile === "function") {
+        try {
+          const compressed = await compressImageFile(f);
+          base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+            reader.readAsDataURL(compressed);
+          });
+        } catch(e) {
+          base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+            reader.readAsDataURL(f);
+          });
+        }
+      } else {
+        base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+          reader.readAsDataURL(f);
+        });
+      }
+      expressRefItems.push({
+        data: base64,
+        mimeType: "image/jpeg",
+        isVideo: false,
+        name: f.name || "foto_referencia.jpg"
+      });
+    }
+    updateExpressRefThumbs();
+  };
+
+  // Selector de archivos (Fotos y Videos)
+  const fileRefInp = document.getElementById("express-file-ref");
   if (fileRefInp) {
-    fileRefInp.addEventListener("change", (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      const r = new FileReader();
-      r.onload = (ev) => {
-        expressRefBase64 = ev.target.result;
-        previewRefImg.src = expressRefBase64;
-        previewRefWrap.style.display = "flex";
-      };
-      r.readAsDataURL(f);
+    fileRefInp.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      for (const f of files) {
+        await processExpressRefFile(f);
+      }
+      fileRefInp.value = "";
     });
   }
 
+  // Cámara en vivo
+  const camRefBtn = document.getElementById("express-cam-ref-btn");
   if (camRefBtn) {
     camRefBtn.addEventListener("click", () => {
-      const streamInp = document.createElement("input");
-      streamInp.type = "file";
-      streamInp.accept = "image/*";
-      streamInp.capture = "environment";
-      streamInp.onchange = (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        const r = new FileReader();
-        r.onload = (ev) => {
-          expressRefBase64 = ev.target.result;
-          previewRefImg.src = expressRefBase64;
-          previewRefWrap.style.display = "flex";
+      if (expressRefItems.length >= 20) {
+        alert("Límite de 20 referencias alcanzado.");
+        return;
+      }
+      if (typeof openLiveCameraModal === "function") {
+        openLiveCameraModal((base64) => {
+          expressRefItems.push({ data: base64, mimeType: "image/jpeg", isVideo: false, name: "camara_referencia.jpg" });
+          updateExpressRefThumbs();
+        });
+      } else {
+        const streamInp = document.createElement("input");
+        streamInp.type = "file";
+        streamInp.accept = "image/*";
+        streamInp.capture = "environment";
+        streamInp.onchange = async (e) => {
+          const f = e.target.files[0];
+          if (f) await processExpressRefFile(f);
         };
-        r.readAsDataURL(f);
-      };
-      streamInp.click();
+        streamInp.click();
+      }
     });
   }
 
-  if (delRefBtn) {
-    delRefBtn.addEventListener("click", () => {
-      expressRefBase64 = "";
-      previewRefImg.src = "";
-      previewRefWrap.style.display = "none";
-      if (fileRefInp) fileRefInp.value = "";
+  // Botón TikTok / Reels
+  const tiktokRefBtn = document.getElementById("express-tiktok-ref-btn");
+  if (tiktokRefBtn) {
+    tiktokRefBtn.addEventListener("click", () => {
+      const url = prompt("Pega el enlace del video (TikTok, Instagram Reel, YouTube o Google Drive):");
+      if (!url || !url.trim()) return;
+      const trimmed = url.trim();
+      if (!/^https?:\/\//i.test(trimmed)) {
+        alert("Por favor ingresa un enlace web válido (debe iniciar con http:// o https://).");
+        return;
+      }
+      expressRefItems.push({
+        isUrl: true,
+        url: trimmed,
+        isVideo: true,
+        name: "Video Enlace"
+      });
+      updateExpressRefThumbs();
+      showToast("🎵 Enlace de video añadido a las referencias.");
     });
   }
 
@@ -9277,46 +10085,37 @@ window.openExpressOrderModal = function() {
       refBoxDrop.style.background = "";
       refBoxDrop.style.borderColor = "#0ea5e9";
     });
-    refBoxDrop.addEventListener("drop", (e) => {
+    refBoxDrop.addEventListener("drop", async (e) => {
       e.preventDefault();
       refBoxDrop.style.background = "";
       refBoxDrop.style.borderColor = "#0ea5e9";
-      const files = e.dataTransfer?.files;
-      if (files && files[0] && files[0].type.startsWith("image/")) {
-        const r = new FileReader();
-        r.onload = (ev) => {
-          expressRefBase64 = ev.target.result;
-          const pImg = document.getElementById("express-ref-img");
-          const pWrap = document.getElementById("express-ref-preview-wrap");
-          if (pImg) pImg.src = expressRefBase64;
-          if (pWrap) pWrap.style.display = "flex";
-          showToast("📸 Imagen de referencia soltada exitosamente.");
-        };
-        r.readAsDataURL(files[0]);
+      const files = Array.from(e.dataTransfer?.files || []);
+      for (const f of files) {
+        await processExpressRefFile(f);
+      }
+      if (files.length) {
+        showToast("📸 / 🎥 Referencias agregadas por arrastrar y soltar.");
       }
     });
   }
 
   // === SOPORTE CTRL+V PARA PEGAR DESDE WHATSAPP WEB EN PC ===
-  const globalPasteHandler = (e) => {
+  const globalPasteHandler = async (e) => {
     if (!document.getElementById("modal")?.classList.contains("open")) return;
     const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
     if (!items) return;
+    let pastedAny = false;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1) {
+      if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("video") !== -1) {
         const file = items[i].getAsFile();
-        const r = new FileReader();
-        r.onload = (ev) => {
-          expressRefBase64 = ev.target.result;
-          const pImg = document.getElementById("express-ref-img");
-          const pWrap = document.getElementById("express-ref-preview-wrap");
-          if (pImg) pImg.src = expressRefBase64;
-          if (pWrap) pWrap.style.display = "flex";
-          showToast("📋 Imagen pegada con éxito desde el portapapeles (Ctrl+V).");
-        };
-        r.readAsDataURL(file);
-        break;
+        if (file) {
+          pastedAny = true;
+          await processExpressRefFile(file);
+        }
       }
+    }
+    if (pastedAny) {
+      showToast("📋 Referencia pegada exitosamente desde el portapapeles (Ctrl+V).");
     }
   };
   window.removeEventListener("paste", window._jjExpressPasteHandler);
@@ -9389,11 +10188,12 @@ window.openExpressOrderModal = function() {
           subItems: JSON.stringify(subItems),
           notas: notasIniciales,
           fotoNotaFisica: expressInvoiceBase64,
-          fotosReferencia: expressRefBase64 ? JSON.stringify([expressRefBase64]) : "[]",
+          fotosReferencia: JSON.stringify(expressRefItems.map(i => i.isUrl ? i.url : (i.data ? `data:${i.mimeType || 'image/jpeg'};base64,${i.data}` : ''))),
           referenceImages: [
-            ...(expressRefBase64 ? [{ data: expressRefBase64, mimeType: "image/jpeg" }] : []),
+            ...expressRefItems.map(i => i.isUrl ? { data: i.url, isVideo: true, isUrl: true } : i),
             ...(expressInvoiceBase64 ? [{ data: expressInvoiceBase64, mimeType: "image/jpeg", isNotaFisica: true }] : [])
-          ]
+          ],
+          referenceLinks: expressRefItems.filter(i => i.isUrl).map(i => i.url)
         };
 
         const res = await api("profile_create_order", payload);
