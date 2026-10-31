@@ -1422,14 +1422,6 @@ function nowView() {
     </div>` : '';
 
   return `${checkOvernightActiveOrdersAlert()}${criticalBanner}${state.offline ? '<p class="offline">Mostrando informaci\u00f3n guardada localmente.</p>' : ""}
-  <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-    <button class="primary-button" data-action="new-order" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:13px; padding:8px 16px;">
-      <i class="fas fa-plus"></i> Registrar nuevo pedido
-    </button>
-    <button type="button" class="primary-button" onclick="openExpressOrderModal()" style="background:#f59e0b; border:none; display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:13px; padding:8px 16px;">
-      <i class="fas fa-bolt"></i> Pedido Rápido Mostrador
-    </button>
-  </div>
   ${next ? `<article class="hero-card" style="background:var(--bg-card); padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md); margin-bottom:20px;"><p class="eyebrow">TU SIGUIENTE TRABAJO PRIORITARIO (${escapeHtml(next.id)})</p>${priorityPill(next)}<h2 style="margin-top:10px;">${escapeHtml(next.cliente)}</h2><p style="color:var(--text-muted); margin-bottom:12px;">${escapeHtml(next.tipo)} ${next.motivo ? `(${escapeHtml(next.motivo)})` : ''} · Entrega: ${escapeHtml(formatDate(next.entrega))}</p><div class="actions"><button class="primary-button" data-action="detail" data-id="${escapeHtml(next.id)}">Ver detalle completo</button></div></article>` : '<div class="empty"><strong>Tu cola de trabajo está al día.</strong></div>'}
   <p class="section-heading" style="font-weight:800; font-size:14px; letter-spacing:1px; margin-bottom:10px;">CRÍTICOS DEL EQUIPO</p>
   <div class="order-list">${critical.map(orderCard).join("") || '<div class="team-note">No hay pedidos críticos en el taller.</div>'}</div>`;
