@@ -1422,6 +1422,14 @@ function nowView() {
     </div>` : '';
 
   return `${checkOvernightActiveOrdersAlert()}${criticalBanner}${state.offline ? '<p class="offline">Mostrando informaci\u00f3n guardada localmente.</p>' : ""}
+  <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+    <button class="primary-button" data-action="new-order" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:13px; padding:8px 16px;">
+      <i class="fas fa-plus"></i> Registrar nuevo pedido
+    </button>
+    <button type="button" class="primary-button" onclick="openExpressOrderModal()" style="background:#f59e0b; border:none; display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:13px; padding:8px 16px;">
+      <i class="fas fa-bolt"></i> Pedido Rápido Mostrador
+    </button>
+  </div>
   ${next ? `<article class="hero-card" style="background:var(--bg-card); padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-color); box-shadow:var(--shadow-md); margin-bottom:20px;"><p class="eyebrow">TU SIGUIENTE TRABAJO PRIORITARIO (${escapeHtml(next.id)})</p>${priorityPill(next)}<h2 style="margin-top:10px;">${escapeHtml(next.cliente)}</h2><p style="color:var(--text-muted); margin-bottom:12px;">${escapeHtml(next.tipo)} ${next.motivo ? `(${escapeHtml(next.motivo)})` : ''} · Entrega: ${escapeHtml(formatDate(next.entrega))}</p><div class="actions"><button class="primary-button" data-action="detail" data-id="${escapeHtml(next.id)}">Ver detalle completo</button></div></article>` : '<div class="empty"><strong>Tu cola de trabajo está al día.</strong></div>'}
   <p class="section-heading" style="font-weight:800; font-size:14px; letter-spacing:1px; margin-bottom:10px;">CRÍTICOS DEL EQUIPO</p>
   <div class="order-list">${critical.map(orderCard).join("") || '<div class="team-note">No hay pedidos críticos en el taller.</div>'}</div>`;
@@ -5403,13 +5411,21 @@ function openModal(content) {
   const m = $("#modal");
   if (m) {
     m.innerHTML = `<div class="modal-content">${content}</div>`;
-    m.showModal();
+    m.classList.add("open");
+    if (typeof m.showModal === "function" && !m.open) {
+      try { m.showModal(); } catch(e) {}
+    }
   }
 }
 
 function closeModal() {
   const m = $("#modal");
-  if (m) m.close();
+  if (m) {
+    m.classList.remove("open");
+    if (typeof m.close === "function" && m.open) {
+      try { m.close(); } catch(e) {}
+    }
+  }
 }
 
 function parseMoney(val) {
@@ -5855,9 +5871,14 @@ function detail(order) {
         `;
       })()}
       
-      <div style="display:flex; justify-content:space-between; border-bottom:1px dashed var(--border-color); padding-bottom:6px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px dashed var(--border-color); padding-bottom:6px;">
         <span style="font-weight:700; color:var(--text-muted); font-size:12px;">TELÉFONO WHATSAPP:</span>
-        <strong style="color:var(--text-main);">${escapeHtml(order.telefono || "No registrado")}</strong>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <strong style="color:var(--text-main);">${escapeHtml(order.telefono || "No registrado")}</strong>
+          <button type="button" class="secondary-button" style="padding:2px 8px; font-size:11px; cursor:pointer;" onclick="openEditOrderPhoneModal('${escapeHtml(order.id)}')">
+            ✏️ ${order.telefono ? 'Cambiar Teléfono' : '➕ Agregar Teléfono'}
+          </button>
+        </div>
       </div>
 
       ${isLead() ? `
@@ -6705,6 +6726,88 @@ window.saveOrderEntrega = async function(orderId) {
   }
 };
 
+window.openEditOrderPhoneModal = function(orderId) {
+  let order = [...(state.data.allOrders || []), ...(state.data.myOrders || []), ...(state.data.finishedOrders || [])].find(
+    o => String(o.id).trim() === String(orderId).trim()
+  );
+  if (!order) {
+    alert("No se encontró el pedido.");
+    return;
+  }
+  const currentPhone = order.telefono || "";
+  openModal(`
+    <div class="modal-head">
+      <h2>✏️ Editar Teléfono WhatsApp (${escapeHtml(order.id)})</h2>
+      <button class="close-button" data-action="close">×</button>
+    </div>
+    <form id="edit-order-phone-form" class="form-grid">
+      <div style="background:var(--bg-main); padding:10px 12px; border-radius:8px; border:1px solid var(--border-color); font-size:12.5px;">
+        <div>👤 <strong>Cliente:</strong> ${escapeHtml(order.cliente)}</div>
+        <div style="color:var(--text-muted); font-size:11.5px; margin-top:2px;">Pedido: ${escapeHtml(order.id)} · ${escapeHtml(order.tipo || '')}</div>
+      </div>
+      <label class="field">
+        <span class="field-label">NÚMERO DE TELÉFONO / WHATSAPP:</span>
+        <input name="telefono" type="tel" id="input-new-order-phone" required value="${escapeHtml(currentPhone)}" placeholder="Ej: 04141234567 o 584141234567" autofocus>
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); cursor:pointer;">
+        <input type="checkbox" id="update-client-directory-check" checked style="width:16px; height:16px;">
+        <span>Actualizar también la ficha de este cliente en el catálogo para futuros pedidos</span>
+      </label>
+      <div class="modal-footer">
+        <button type="button" class="secondary-button" data-action="close">Cancelar</button>
+        <button type="submit" class="primary-button">💾 Guardar Teléfono</button>
+      </div>
+    </form>
+  `);
+
+  $("#edit-order-phone-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector(".primary-button");
+    btn.disabled = true;
+    btn.textContent = "Guardando...";
+
+    const rawInput = document.getElementById("input-new-order-phone")?.value || "";
+    const cleanPhone = cleanPhoneNumber(rawInput);
+    const updateDir = document.getElementById("update-client-directory-check")?.checked;
+
+    try {
+      await api("profile_update_order", {
+        id: order.id,
+        changes: { telefono: cleanPhone }
+      });
+      order.telefono = cleanPhone;
+
+      [...(state.data.allOrders || []), ...(state.data.myOrders || []), ...(state.data.finishedOrders || [])].forEach(o => {
+        if (String(o.id).trim() === String(order.id).trim()) {
+          o.telefono = cleanPhone;
+        }
+      });
+
+      if (updateDir && order.cliente) {
+        try {
+          await api("profile_edit_client", {
+            originalName: order.cliente,
+            name: order.cliente,
+            phone: cleanPhone
+          });
+          const found = (state.frequentClients || []).find(c => (c.name || c.nombre || "").toLowerCase() === order.cliente.toLowerCase());
+          if (found) found.phone = cleanPhone;
+        } catch(errDir) {
+          console.warn("No se pudo actualizar ficha de cliente:", errDir);
+        }
+      }
+
+      closeModal();
+      showToast("✅ Teléfono actualizado correctamente.");
+      detail(order);
+    } catch(err) {
+      btn.disabled = false;
+      btn.textContent = "💾 Guardar Teléfono";
+      alert("Error al actualizar teléfono: " + err.message);
+    }
+  });
+};
+
 let activeMediaStream = null;
 
 function stopActiveCamera() {
@@ -6716,16 +6819,17 @@ function stopActiveCamera() {
   }
 }
 
-function openLiveCameraModal(onCaptureCallback) {
+function openLiveCameraModal(onCaptureCallback, onCancelCallback) {
+  window._activeCameraCancelCallback = onCancelCallback;
   openModal(`
     <div class="modal-head">
       <h2>📸 Cámara Directa de Producción</h2>
-      <button class="close-button" data-action="close" onclick="stopActiveCamera()">×</button>
+      <button class="close-button" data-action="close" onclick="stopActiveCamera(); if (typeof window._activeCameraCancelCallback === 'function') window._activeCameraCancelCallback();">×</button>
     </div>
     <div class="live-camera-box">
       <video id="live-cam-video" class="live-camera-video" autoplay playsinline muted></video>
       <div class="camera-controls-bar">
-        <button type="button" class="secondary-button" onclick="stopActiveCamera(); closeModal();" style="border:none; background:#475569; color:white;">Cancelar</button>
+        <button type="button" class="secondary-button" onclick="stopActiveCamera(); closeModal(); if (typeof window._activeCameraCancelCallback === 'function') window._activeCameraCancelCallback();" style="border:none; background:#475569; color:white;">Cancelar</button>
         <button type="button" id="cam-snap-btn" class="camera-capture-btn" title="Tomar Foto">📸</button>
       </div>
     </div>
@@ -6775,8 +6879,9 @@ function openLiveCameraModal(onCaptureCallback) {
 }
 window.openLiveCameraModal = openLiveCameraModal;
 
-function openFinishModal(order, targetStatus) {
-  let capturedEvidences = [];
+function openFinishModal(order, targetStatus, initialDraft = null) {
+  let capturedEvidences = [...(initialDraft?.images || [])];
+  let initialComment = initialDraft?.comentario || "";
 
   const renderEviThumbs = () => {
     const listEl = document.getElementById("finish-evi-thumbs");
@@ -6861,7 +6966,7 @@ function openFinishModal(order, targetStatus) {
       })()}
 
       <label class="field"><span class="field-label">COMENTARIO DE CIERRE / OBSERVACIÓN</span>
-        <textarea name="comentarioCierre" required placeholder="Escribe un comentario sobre la elaboración, materiales usados o imprevistos..."></textarea>
+        <textarea name="comentarioCierre" required placeholder="Escribe un comentario sobre la elaboración, materiales usados o imprevistos...">${escapeHtml(initialComment)}</textarea>
       </label>
 
       <div style="margin:4px 0;">
@@ -6889,12 +6994,51 @@ function openFinishModal(order, targetStatus) {
       alert("Ya has alcanzado el límite de 3 fotos de evidencia.");
       return;
     }
-    openLiveCameraModal((base64) => {
-      capturedEvidences.push({ data: base64, mimeType: "image/jpeg" });
-      openFinishModal(order, targetStatus);
-      renderEviThumbs();
-    });
+    const currentComment = document.querySelector("#finish-form textarea[name='comentarioCierre']")?.value || "";
+    openLiveCameraModal(
+      (base64) => {
+        capturedEvidences.push({ data: base64, mimeType: "image/jpeg" });
+        openFinishModal(order, targetStatus, { images: capturedEvidences, comentario: currentComment });
+      },
+      () => {
+        openFinishModal(order, targetStatus, { images: capturedEvidences, comentario: currentComment });
+      }
+    );
   });
+
+  const finishPasteHandler = async (e) => {
+    if (!document.getElementById("finish-form")) return;
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+    let imageItem = null;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.startsWith("image/")) {
+        imageItem = items[i];
+        break;
+      }
+    }
+    if (!imageItem) return;
+    if (capturedEvidences.length >= 3) {
+      alert("Ya has alcanzado el límite de 3 fotos de evidencia.");
+      return;
+    }
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (file) {
+      const compressed = await compressImageFile(file);
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+        reader.readAsDataURL(compressed);
+      });
+      capturedEvidences.push({ data: base64, mimeType: "image/jpeg" });
+      renderEviThumbs();
+      showToast("📋 Foto de evidencia pegada (Ctrl+V).");
+    }
+  };
+  window.removeEventListener("paste", window._jjFinishPasteHandler);
+  window._jjFinishPasteHandler = finishPasteHandler;
+  window.addEventListener("paste", finishPasteHandler);
 
   document.getElementById("evidencia-files")?.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
@@ -7043,14 +7187,14 @@ function openEditDeliveryDateModal(orderOrId) {
 }
 window.openEditDeliveryDateModal = openEditDeliveryDateModal;
 
-function openAddRefImagesModal(orderOrId) {
+function openAddRefImagesModal(orderOrId, initialImages = []) {
   let order = orderOrId;
   if (typeof order === "string") {
     order = [...(state.data.allOrders || []), ...(state.data.myOrders || []), ...(state.data.finishedOrders || [])].find(o => String(o.id).trim() === orderOrId.trim());
   }
   if (!order) return;
 
-  let capturedImages = [];
+  let capturedImages = [...initialImages];
 
   const updateThumbs = () => {
     const listEl = document.getElementById("ref-thumbs-list");
@@ -7105,12 +7249,46 @@ function openAddRefImagesModal(orderOrId) {
   `);
 
   document.getElementById("open-cam-ref-btn")?.addEventListener("click", () => {
-    openLiveCameraModal((base64) => {
-      capturedImages.push({ data: base64, mimeType: "image/jpeg" });
-      openAddRefImagesModal(order);
-      updateThumbs();
-    });
+    openLiveCameraModal(
+      (base64) => {
+        capturedImages.push({ data: base64, mimeType: "image/jpeg" });
+        openAddRefImagesModal(order, capturedImages);
+      },
+      () => {
+        openAddRefImagesModal(order, capturedImages);
+      }
+    );
   });
+
+  const addRefPasteHandler = async (e) => {
+    if (!document.getElementById("add-ref-form")) return;
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+    let imageItem = null;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.startsWith("image/")) {
+        imageItem = items[i];
+        break;
+      }
+    }
+    if (!imageItem) return;
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (file) {
+      const compressed = await compressImageFile(file);
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => resolve(evt.target.result.split(',')[1]);
+        reader.readAsDataURL(compressed);
+      });
+      capturedImages.push({ data: base64, mimeType: "image/jpeg" });
+      updateThumbs();
+      showToast("📋 Foto de referencia pegada (Ctrl+V).");
+    }
+  };
+  window.removeEventListener("paste", window._jjAddRefPasteHandler);
+  window._jjAddRefPasteHandler = addRefPasteHandler;
+  window.addEventListener("paste", addRefPasteHandler);
 
   document.getElementById("extra-ref-files")?.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
@@ -7182,11 +7360,24 @@ function openEditClientModal(client, onSavedCallback) {
         <input name="direccion" value="${escapeHtml(client.direccion || '')}" placeholder="Ej. Calle 72, Edif. Apolo, Apto 4">
       </label>
       <div class="modal-footer">
-        <button type="button" class="secondary-button" data-action="close">Cancelar</button>
+        <button type="button" class="secondary-button" id="cancel-edit-client-order-btn">Cancelar</button>
         <button type="submit" class="primary-button">💾 Guardar Cambios</button>
       </div>
     </form>
   `);
+
+    document.getElementById("cancel-edit-client-order-btn")?.addEventListener("click", () => {
+    closeModal();
+    if (window._activeOrderFormDraft) {
+      const d = window._activeOrderFormDraft;
+      window._activeOrderFormDraft = null;
+      formOrder(d);
+    } else if (window._activeExpressOrderDraft) {
+      const d = window._activeExpressOrderDraft;
+      window._activeExpressOrderDraft = null;
+      openExpressOrderModal(d);
+    }
+  });
 
   $("#edit-client-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -7200,7 +7391,19 @@ function openEditClientModal(client, onSavedCallback) {
       await refresh(false);
       showToast("✅ Cliente actualizado con éxito.");
 
-      if (typeof onSavedCallback === "function") {
+      if (window._activeOrderFormDraft) {
+        const draft = window._activeOrderFormDraft;
+        draft.cliente = formPayload.name;
+        if (formPayload.phone) draft.telefono = formPayload.phone;
+        window._activeOrderFormDraft = null;
+        formOrder(draft);
+      } else if (window._activeExpressOrderDraft) {
+        const draft = window._activeExpressOrderDraft;
+        draft.cliente = formPayload.name;
+        if (formPayload.phone) draft.telefono = formPayload.phone;
+        window._activeExpressOrderDraft = null;
+        openExpressOrderModal(draft);
+      } else if (typeof onSavedCallback === "function") {
         onSavedCallback(formPayload);
       } else {
         const expCli = document.getElementById("express-cliente");
@@ -7862,8 +8065,16 @@ window.copyWaTextAndNotify = async function(idOrd, tel, encMsg) {
   await window.markOrderWaNotified(idOrd);
 };
 
-function formOrder() {
+function formOrder(initialData = null) {
   const users = (state.data.users || []).filter(u => u.active);
+  const defaultDeliveryDate = (initialData && initialData.fechaEntrega) ? initialData.fechaEntrega : (() => {
+    const tom = new Date();
+    tom.setDate(tom.getDate() + 1);
+    const y = tom.getFullYear();
+    const m = String(tom.getMonth() + 1).padStart(2, '0');
+    const d = String(tom.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  })();
   const clients = [...(state.frequentClients || [])].sort((a,b) => (a.name||"").localeCompare(b.name||"", 'es', {sensitivity:'base'}));
   const types = state.frequentTypes;
   const motivos = state.frequentMotivos || [];
@@ -7900,22 +8111,22 @@ function formOrder() {
       <div id="delivery-warning" class="delivery-warning-box" style="display:none;"></div>
       <label class="field"><span class="field-label">NOMBRE DEL CLIENTE</span>
         <div style="display:flex; gap:6px;">
-          <input id="input-cliente" name="cliente" required placeholder="Escribe el nombre del cliente" style="flex:1;">
+          <input id="input-cliente" name="cliente" required placeholder="Escribe el nombre del cliente" style="flex:1;" value="${escapeHtml(initialData?.cliente || '')}">
           <button type="button" class="mic-action-btn" id="standard-mic-btn" onclick="startVoiceDictationForStandard()" title="Dictar pedido por voz">
             <i class="fas fa-microphone"></i>
           </button>
         </div>
       </label>
-      <label class="field"><span class="field-label">TELÉFONO WHATSAPP</span><input id="input-telefono" name="telefono" type="tel" placeholder="Ingresa o cambia el número"></label>
+      <label class="field"><span class="field-label">TELÉFONO WHATSAPP</span><input id="input-telefono" name="telefono" type="tel" placeholder="Ingresa o cambia el número" value="${escapeHtml(initialData?.telefono || '')}"></label>
       
       <label class="field"><span class="field-label">TIPO DE TRABAJO</span>
         ${types.length ? `<select id="ft-select" style="margin-bottom:6px;"><option value="">-- Seleccionar existente --</option>${types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}<option value="__CUSTOM__">Escribir otro nuevo...</option></select>` : ''}
-        <input id="input-tipo" name="tipo" required placeholder="Ej. Topper Acrílico, Maqueta...">
+        <input id="input-tipo" name="tipo" required placeholder="Ej. Topper Acrílico, Maqueta..." value="${escapeHtml(initialData?.tipo || '')}">
       </label>
 
       <label class="field"><span class="field-label">🎨 MOTIVO / TEMÁTICA</span>
         ${motivos.length ? `<select id="motivo-select" style="margin-bottom:6px;"><option value="">-- Seleccionar motivo guardado --</option>${motivos.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}<option value="__CUSTOM__">Escribir nuevo motivo...</option></select>` : ''}
-        <input id="input-motivo" name="motivo" placeholder="Ej. Hello Kitty, Tarzán, Cumpleaños 15...">
+        <input id="input-motivo" name="motivo" placeholder="Ej. Hello Kitty, Tarzán, Cumpleaños 15..." value="${escapeHtml(initialData?.motivo || '')}">
       </label>
 
       <!-- SECCIÓN MULTI-TRABAJO (Opcional - colapsable) -->
@@ -7989,7 +8200,7 @@ function formOrder() {
       </div>
 
       <div class="form-inline">
-        <label class="field"><span class="field-label">FECHA DE ENTREGA</span><input type="date" id="input-fecha-entrega" name="fechaEntrega" required></label>
+        <label class="field"><span class="field-label">FECHA DE ENTREGA</span><input type="date" id="input-fecha-entrega" name="fechaEntrega" value="${defaultDeliveryDate}" required></label>
         <label class="field"><span class="field-label">HORA DE ENTREGA (7 AM - 9 PM)</span>
           <select id="select-hora-entrega" name="horaEntrega" required>
             ${generateTimeOptions("11:00 AM")}
@@ -7999,7 +8210,7 @@ function formOrder() {
       <label class="field"><span class="field-label">RESPONSABLE</span>
         <select name="responsable"><option value="">Sin asignar</option>${users.map(u => `<option value="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join("")}</select>
       </label>
-      <label class="field"><span class="field-label">DESCRIPCIÓN / MEDIDAS</span><textarea id="input-descripcion" name="descripcion" placeholder="Detalles, medidas, edad, posición..."></textarea></label>
+      <label class="field"><span class="field-label">DESCRIPCIÓN / MEDIDAS</span><textarea id="input-descripcion" name="descripcion" placeholder="Detalles, medidas, edad, posición...">${escapeHtml(initialData?.descripcion || '')}</textarea></label>
 
       <!-- SECCIÓN FINANCIERA Y COBRO (100% Opcional - Creaciones JJ) -->
       <div class="physical-invoice-box" style="border:1.5px solid #10b981; background:rgba(16,185,129,0.04); border-radius:10px; padding:12px; margin-top:14px; margin-bottom:14px;">
@@ -8015,11 +8226,11 @@ function formOrder() {
         <div class="form-inline" style="gap:8px; margin-bottom:8px;">
           <label class="field" style="flex:1;">
             <span class="field-label">PRECIO TOTAL ACORDADO ($)</span>
-            <input type="number" id="input-form-costo" name="costo" step="0.01" min="0" placeholder="0.00" oninput="window.recalcFormOrderPayment()">
+            <input type="number" id="input-form-costo" name="costo" step="0.01" min="0" placeholder="0.00" value="${escapeHtml(initialData?.costo || '')}" oninput="window.recalcFormOrderPayment()">
           </label>
           <label class="field" style="flex:1;">
             <span class="field-label">ANTICIPO / ABONO RECIBIDO ($)</span>
-            <input type="number" id="input-form-anticipo" name="anticipo" step="0.01" min="0" placeholder="0.00" oninput="window.recalcFormOrderPayment()">
+            <input type="number" id="input-form-anticipo" name="anticipo" step="0.01" min="0" placeholder="0.00" value="${escapeHtml(initialData?.anticipo || '')}" oninput="window.recalcFormOrderPayment()">
           </label>
           <label class="field" style="flex:1;">
             <span class="field-label">RESTA / SALDO ($)</span>
@@ -8041,7 +8252,7 @@ function formOrder() {
           </label>
           <label class="field" style="flex:1.5;">
             <span class="field-label">REFERENCIA / NOTA DE PAGO</span>
-            <input type="text" id="input-form-notapago" name="notaPago" placeholder="Ej. Ref 4821 / Recibió Jeanette en efectivo">
+            <input type="text" id="input-form-notapago" name="notaPago" placeholder="Ej. Ref 4821 / Recibió Jeanette en efectivo" value="${escapeHtml(initialData?.notaPago || '')}">
           </label>
         </div>
       </div>
@@ -8074,7 +8285,29 @@ function formOrder() {
     }
   };
 
-  let formCapturedImages = [];
+  let formCapturedImages = [...(initialData?.images || [])];
+
+  const captureCurrentFormOrderData = () => {
+    const form = document.getElementById("order-form");
+    if (!form) return null;
+    return {
+      cliente: document.getElementById("input-cliente")?.value || "",
+      telefono: document.getElementById("input-telefono")?.value || "",
+      tipo: document.getElementById("input-tipo")?.value || "",
+      motivo: document.getElementById("input-motivo")?.value || "",
+      diseno: form.querySelector('select[name="diseno"]')?.value || "Sí",
+      fechaEntrega: document.getElementById("input-fecha-entrega")?.value || defaultDeliveryDate,
+      horaEntrega: document.getElementById("select-hora-entrega")?.value || "11:00 AM",
+      responsable: form.querySelector('select[name="responsable"]')?.value || "",
+      descripcion: document.getElementById("input-descripcion")?.value || "",
+      costo: document.getElementById("input-form-costo")?.value || "",
+      anticipo: document.getElementById("input-form-anticipo")?.value || "",
+      metodoPago: document.getElementById("select-form-metodo")?.value || "Pendiente",
+      notaPago: document.getElementById("input-form-notapago")?.value || "",
+      images: [...formCapturedImages],
+      selectedClientIdx: document.getElementById("fc-select")?.value || ""
+    };
+  };
 
   const updateFormRefThumbs = () => {
     const listEl = document.getElementById("form-ref-thumbs");
@@ -8177,20 +8410,21 @@ function formOrder() {
 
   // Soporte Ctrl+V para pegar desde WhatsApp Web
   const formOrderPasteHandler = async (e) => {
-    if (!document.getElementById("modal")?.classList.contains("open")) return;
+    if (!document.getElementById("order-form")) return;
     const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
     if (!items) return;
-    let pastedAny = false;
+    let imageItem = null;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("video") !== -1) {
-        const f = items[i].getAsFile();
-        if (f) {
-          pastedAny = true;
-          await processRefFile(f);
-        }
+      if (items[i].type && (items[i].type.startsWith("image/") || items[i].type.startsWith("video/"))) {
+        imageItem = items[i];
+        break;
       }
     }
-    if (pastedAny) {
+    if (!imageItem) return;
+    e.preventDefault();
+    const f = imageItem.getAsFile();
+    if (f) {
+      await processRefFile(f);
       showToast("📋 Referencia pegada exitosamente desde el portapapeles (Ctrl+V).");
     }
   };
@@ -8222,10 +8456,17 @@ function formOrder() {
       alert("Límite de 30 fotos de referencia alcanzado.");
       return;
     }
-    openLiveCameraModal((base64) => {
-      formCapturedImages.push({ data: base64, mimeType: "image/jpeg" });
-      updateFormRefThumbs();
-    });
+    const curDraft = captureCurrentFormOrderData();
+    openLiveCameraModal(
+      (base64) => {
+        curDraft.images = curDraft.images || [];
+        curDraft.images.push({ data: base64, mimeType: "image/jpeg", isVideo: false, name: "camara_referencia.jpg" });
+        formOrder(curDraft);
+      },
+      () => {
+        formOrder(curDraft);
+      }
+    );
   });
 
   document.getElementById("reference-files-input")?.addEventListener("change", async (e) => {
@@ -8261,7 +8502,9 @@ function formOrder() {
       if (editBtn) editBtn.style.display = "inline-flex";
       if (c) {
         $("#input-cliente").value = c.name || "";
-        $("#input-telefono").value = c.phone || "";
+        if (c.phone && c.phone.trim()) {
+          $("#input-telefono").value = c.phone.trim();
+        }
         const deliveryWarn = document.getElementById("delivery-warning");
         if (deliveryWarn) {
           if (c.delivery === "Sí" || c.delivery === "SI" || c.delivery === "SA-") {
@@ -8279,12 +8522,10 @@ function formOrder() {
 
   document.getElementById("fc-edit-btn")?.addEventListener("click", () => {
     const val = $("#fc-select")?.value;
-    if (val !== "" && clients[val]) {
-      openEditClientModal(clients[val], (updated) => {
-        $("#input-cliente").value = updated.name || "";
-        $("#input-telefono").value = updated.phone || "";
-      });
-    }
+    const curDraft = captureCurrentFormOrderData();
+    window._activeOrderFormDraft = curDraft;
+    const clientToEdit = (val !== "" && clients[val]) ? clients[val] : { name: $("#input-cliente")?.value || "", phone: $("#input-telefono")?.value || "" };
+    openEditClientModal(clientToEdit);
   });
 
   $("#motivo-select")?.addEventListener("change", (e) => {
@@ -8314,6 +8555,10 @@ function formOrder() {
     `;
     list.appendChild(row);
   });
+
+    if (formCapturedImages.length > 0) {
+    updateFormRefThumbs();
+  }
 
   $("#order-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -9470,12 +9715,28 @@ window.triggerOcrForExpressInvoice = async function(base64Image) {
   }
 };
 
-window.openExpressOrderModal = function() {
+window.openExpressOrderModal = function(initialDraft = null) {
   const clients = [...(state.data?.clients || state.frequentClients || [])].sort((a,b) => (a.name || a.nombre || "").localeCompare(b.name || b.nombre || "", 'es', {sensitivity:'base'}));
   const types = state.frequentTypes || ["Topper", "Stickers", "Taza Sublimada", "Invitación Digital", "Letras 3D", "Pendón", "Caja Sorpresa", "Maqueta"];
   const motivos = state.frequentMotivos || [];
-  let expressInvoiceBase64 = "";
-  let expressRefItems = [];
+  let expressInvoiceBase64 = initialDraft?.invoiceBase64 || "";
+  let expressRefItems = [...(initialDraft?.refItems || [])];
+
+  const captureCurrentExpressOrderFormData = () => {
+    return {
+      cliente: document.getElementById("express-cliente")?.value || "",
+      telefono: document.getElementById("express-telefono")?.value || "",
+      motivo: document.getElementById("express-motivo")?.value || "",
+      fecha: document.getElementById("express-fecha")?.value || "",
+      hora: document.getElementById("express-hora")?.value || "",
+      responsable: document.getElementById("express-responsable")?.value || "",
+      costo: document.getElementById("express-costo")?.value || "",
+      anticipo: document.getElementById("express-anticipo")?.value || "",
+      notaPago: document.getElementById("express-nota-pago")?.value || "",
+      refItems: [...expressRefItems],
+      invoiceBase64: expressInvoiceBase64
+    };
+  };
 
   openModal(`
     <div class="modal-head">
@@ -9714,7 +9975,22 @@ window.openExpressOrderModal = function() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   const fechaInput = document.getElementById("express-fecha");
-  if (fechaInput) fechaInput.value = `${y}-${m}-${day}`;
+  if (fechaInput) fechaInput.value = initialDraft?.fecha || `${y}-${m}-${day}`;
+  if (initialDraft) {
+    if (initialDraft.cliente) document.getElementById("express-cliente").value = initialDraft.cliente;
+    if (initialDraft.telefono) document.getElementById("express-telefono").value = initialDraft.telefono;
+    if (initialDraft.motivo) document.getElementById("express-motivo").value = initialDraft.motivo;
+    if (initialDraft.hora) document.getElementById("express-hora").value = initialDraft.hora;
+    if (initialDraft.responsable) document.getElementById("express-responsable").value = initialDraft.responsable;
+    if (initialDraft.costo) document.getElementById("express-costo").value = initialDraft.costo;
+    if (initialDraft.anticipo) document.getElementById("express-anticipo").value = initialDraft.anticipo;
+    if (initialDraft.notaPago) document.getElementById("express-nota-pago").value = initialDraft.notaPago;
+    if (expressRefItems.length > 0) updateExpressRefThumbs();
+    if (expressInvoiceBase64 && previewImg && previewWrap) {
+      previewImg.src = expressInvoiceBase64;
+      previewWrap.style.display = "flex";
+    }
+  }
 
   // Helper de cálculo de saldo
   window.recalcExpressPayment = function() {
@@ -9761,15 +10037,10 @@ window.openExpressOrderModal = function() {
   if (editCliBtn) {
     editCliBtn.addEventListener("click", () => {
       const opt = selCli?.options[selCli.selectedIndex];
-      if (opt && opt.value) {
-        const clientObj = clients.find(c => (c.name || c.nombre) === opt.value);
-        if (clientObj) {
-          openEditClientModal(clientObj, (updated) => {
-            document.getElementById("express-cliente").value = updated.name || "";
-            document.getElementById("express-telefono").value = updated.phone || "";
-          });
-        }
-      }
+      const curDraft = captureCurrentExpressOrderFormData();
+      window._activeExpressOrderDraft = curDraft;
+      const clientObj = (opt && opt.value) ? clients.find(c => (c.name || c.nombre) === opt.value) : { name: document.getElementById("express-cliente")?.value || "", phone: document.getElementById("express-telefono")?.value || "" };
+      openEditClientModal(clientObj || { name: opt?.value || "", phone: "" });
     });
   }
 
@@ -9998,11 +10269,18 @@ window.openExpressOrderModal = function() {
         alert("Límite de 20 referencias alcanzado.");
         return;
       }
+      const curDraft = captureCurrentExpressOrderFormData();
       if (typeof openLiveCameraModal === "function") {
-        openLiveCameraModal((base64) => {
-          expressRefItems.push({ data: base64, mimeType: "image/jpeg", isVideo: false, name: "camara_referencia.jpg" });
-          updateExpressRefThumbs();
-        });
+        openLiveCameraModal(
+          (base64) => {
+            curDraft.refItems = curDraft.refItems || [];
+            curDraft.refItems.push({ data: base64, mimeType: "image/jpeg", isVideo: false, name: "camara_referencia.jpg" });
+            openExpressOrderModal(curDraft);
+          },
+          () => {
+            openExpressOrderModal(curDraft);
+          }
+        );
       } else {
         const streamInp = document.createElement("input");
         streamInp.type = "file";
@@ -10101,20 +10379,21 @@ window.openExpressOrderModal = function() {
 
   // === SOPORTE CTRL+V PARA PEGAR DESDE WHATSAPP WEB EN PC ===
   const globalPasteHandler = async (e) => {
-    if (!document.getElementById("modal")?.classList.contains("open")) return;
+    if (!document.getElementById("express-order-form")) return;
     const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
     if (!items) return;
-    let pastedAny = false;
+    let imageItem = null;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("video") !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          pastedAny = true;
-          await processExpressRefFile(file);
-        }
+      if (items[i].type && (items[i].type.startsWith("image/") || items[i].type.startsWith("video/"))) {
+        imageItem = items[i];
+        break;
       }
     }
-    if (pastedAny) {
+    if (!imageItem) return;
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (file) {
+      await processExpressRefFile(file);
       showToast("📋 Referencia pegada exitosamente desde el portapapeles (Ctrl+V).");
     }
   };
