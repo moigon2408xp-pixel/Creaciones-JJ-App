@@ -7323,7 +7323,177 @@ function openAddRefImagesModal(orderOrId, initialImages = []) {
 }
 window.openAddRefImagesModal = openAddRefImagesModal;
 
+function openClientEditOverlay(client, onSavedCallback) {
+  const modal = document.getElementById("modal");
+  const modalContent = modal?.querySelector(".modal-content") || modal;
+  if (!modalContent) return;
+
+  document.getElementById("client-edit-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "client-edit-overlay";
+  overlay.style.cssText = `
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    min-height: 100%;
+    background: var(--bg-card);
+    z-index: 1000;
+    border-radius: inherit;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  `;
+
+  const clientName = client.name || client.nombre || "";
+  const clientPhone = client.phone || client.telefono || "";
+  const clientDelivery = client.delivery || "No";
+  const clientZona = client.zona || "";
+  const clientDireccion = client.direccion || "";
+
+  overlay.innerHTML = `
+    <div class="modal-head" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="font-size:18px; margin:0; display:flex; align-items:center; gap:8px;">
+        <span>✏️ Editar Datos de Cliente</span>
+      </h2>
+      <button type="button" class="close-button" id="close-client-overlay-btn" style="cursor:pointer; font-size:18px;">✕</button>
+    </div>
+    <div style="background:rgba(14,165,233,0.08); border-left:3px solid #0ea5e9; padding:8px 12px; border-radius:6px; margin-bottom:14px; font-size:12px; color:var(--text-muted);">
+      ℹ️ Los cambios se guardarán en Google Sheets y se aplicarán de inmediato a este pedido sin perder lo que ya escribiste.
+    </div>
+    <form id="overlay-edit-client-form" class="form-grid" style="flex:1;">
+      <input type="hidden" name="originalName" value="${escapeHtml(clientName)}">
+      <label class="field"><span class="field-label">NOMBRE DEL CLIENTE</span>
+        <input name="name" required value="${escapeHtml(clientName)}">
+      </label>
+      <label class="field">
+        <span class="field-label">TELÉFONO / WHATSAPP ${!clientPhone ? '<strong style="color:#ef4444;">(⚠️ FALTANTE)</strong>' : ''}</span>
+        <input name="phone" type="tel" value="${escapeHtml(clientPhone)}" placeholder="Ej. 04141234567 o 58414..." ${!clientPhone ? 'autofocus style="border-color:#ef4444;"' : ''}>
+        <small style="color:var(--text-muted); font-size:11px;">Al guardar, este número se asociará a sus pedidos y autocompletados.</small>
+      </label>
+      <label class="field"><span class="field-label">¿REQUIERE DELIVERY?</span>
+        <select name="delivery">
+          <option value="No" ${clientDelivery !== 'Sí' ? 'selected' : ''}>No – Retira en tienda / taller</option>
+          <option value="Sí" ${clientDelivery === 'Sí' ? 'selected' : ''}>Sí – Se le lleva a domicilio</option>
+        </select>
+      </label>
+      <label class="field"><span class="field-label">ZONA / SECTOR (Ej: Norte, San Francisco, Curva)</span>
+        <input name="zona" value="${escapeHtml(clientZona)}" placeholder="Ej. Norte, Milagro, La Lago...">
+      </label>
+      <label class="field"><span class="field-label">DIRECCIÓN DE ENTREGA</span>
+        <input name="direccion" value="${escapeHtml(clientDireccion)}" placeholder="Ej. Calle 72, Edif. Apolo, Apto 4">
+      </label>
+      <div class="modal-footer" style="margin-top:16px;">
+        <button type="button" class="secondary-button" id="cancel-client-overlay-btn">Cancelar</button>
+        <button type="submit" class="primary-button" id="save-client-overlay-btn">💾 Guardar y Aplicar al Pedido</button>
+      </div>
+    </form>
+  `;
+
+  if (getComputedStyle(modalContent).position === "static") {
+    modalContent.style.position = "relative";
+  }
+  modalContent.appendChild(overlay);
+
+  const closeOverlay = () => overlay.remove();
+  overlay.querySelector("#close-client-overlay-btn")?.addEventListener("click", closeOverlay);
+  overlay.querySelector("#cancel-client-overlay-btn")?.addEventListener("click", closeOverlay);
+
+  overlay.querySelector("#overlay-edit-client-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = overlay.querySelector("#save-client-overlay-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Guardando en Sheets...";
+
+    try {
+      const formPayload = Object.fromEntries(new FormData(e.target));
+      await api("profile_edit_client", formPayload);
+
+      // 1. Actualizar cliente en state.frequentClients en memoria local
+      state.frequentClients = state.frequentClients || [];
+      let cFound = state.frequentClients.find(c => (c.name || '').toLowerCase() === (formPayload.originalName || formPayload.name || '').toLowerCase());
+      if (cFound) {
+        cFound.name = formPayload.name;
+        cFound.phone = formPayload.phone || "";
+        cFound.delivery = formPayload.delivery || "No";
+        cFound.zona = formPayload.zona || "";
+        cFound.direccion = formPayload.direccion || "";
+      } else {
+        state.frequentClients.push({
+          name: formPayload.name,
+          phone: formPayload.phone || "",
+          delivery: formPayload.delivery || "No",
+          zona: formPayload.zona || "",
+          direccion: formPayload.direccion || ""
+        });
+      }
+
+      // 2. Aplicar directamente a los campos del formulario activo
+      const stdCli = document.getElementById("input-cliente");
+      const stdTel = document.getElementById("input-telefono");
+      if (stdCli) stdCli.value = formPayload.name;
+      if (stdTel) stdTel.value = formPayload.phone || "";
+
+      const expCli = document.getElementById("express-cliente");
+      const expTel = document.getElementById("express-telefono");
+      if (expCli) expCli.value = formPayload.name;
+      if (expTel) expTel.value = formPayload.phone || "";
+
+      // 3. Actualizar selectores desplegables de clientes
+      const fcSelect = document.getElementById("fc-select");
+      if (fcSelect) {
+        const selIdx = fcSelect.value;
+        if (selIdx !== "" && fcSelect.options[fcSelect.selectedIndex]) {
+          fcSelect.options[fcSelect.selectedIndex].text = `${formPayload.name} (${formPayload.phone || '⚠️ Sin tel.'})`;
+        }
+      }
+      const expSelect = document.getElementById("express-client-select");
+      if (expSelect) {
+        const curOpt = expSelect.options[expSelect.selectedIndex];
+        if (curOpt && curOpt.value) {
+          curOpt.value = formPayload.name;
+          curOpt.setAttribute("data-phone", formPayload.phone || "");
+          curOpt.text = `${formPayload.name} ${formPayload.phone ? '(' + formPayload.phone + ')' : '(⚠️ Sin tel.)'}`;
+        }
+      }
+
+      // 4. Si hay alerta de delivery, actualizarla
+      const deliveryWarn = document.getElementById("delivery-warning");
+      if (deliveryWarn) {
+        if (formPayload.delivery === "Sí") {
+          deliveryWarn.style.display = "block";
+          deliveryWarn.innerHTML = `🚚 <strong>Cliente con DELIVERY A DOMICILIO</strong><br>📍 <strong>Sector / Zona:</strong> ${escapeHtml(formPayload.zona || 'No especificada')}<br>🏠 <strong>Dirección:</strong> ${escapeHtml(formPayload.direccion || 'No especificada')}<br>⚠️ <em>El pedido DEBE quedar listo el día anterior al fin de jornada.</em>`;
+        } else {
+          deliveryWarn.style.display = "none";
+        }
+      }
+
+      if (typeof onSavedCallback === "function") {
+        onSavedCallback(formPayload);
+      }
+
+      showToast("✅ Cliente guardado. Puedes continuar con el pedido.");
+      closeOverlay();
+    } catch(err) {
+      console.error(err);
+      btn.disabled = false;
+      btn.textContent = "💾 Guardar y Aplicar al Pedido";
+      alert(`Error al guardar cliente: ${err.message}`);
+    }
+  });
+}
+window.openClientEditOverlay = openClientEditOverlay;
+
 function openEditClientModal(client, onSavedCallback) {
+  // Si estamos dentro de un formulario de pedido activo, usamos el overlay para NO cerrar ni resetear el pedido
+  if (document.getElementById("order-form") || document.getElementById("express-order-form")) {
+    return openClientEditOverlay(client, onSavedCallback);
+  }
+
+  // Comportamiento estándar si se llama desde Ajustes / Directorio de clientes
   openModal(`
     <div class="modal-head">
       <h2>✏️ Editar Datos de Cliente</h2>
@@ -7352,24 +7522,11 @@ function openEditClientModal(client, onSavedCallback) {
         <input name="direccion" value="${escapeHtml(client.direccion || '')}" placeholder="Ej. Calle 72, Edif. Apolo, Apto 4">
       </label>
       <div class="modal-footer">
-        <button type="button" class="secondary-button" id="cancel-edit-client-order-btn">Cancelar</button>
+        <button type="button" class="secondary-button" data-action="close">Cancelar</button>
         <button type="submit" class="primary-button">💾 Guardar Cambios</button>
       </div>
     </form>
   `);
-
-    document.getElementById("cancel-edit-client-order-btn")?.addEventListener("click", () => {
-    closeModal();
-    if (window._activeOrderFormDraft) {
-      const d = window._activeOrderFormDraft;
-      window._activeOrderFormDraft = null;
-      formOrder(d);
-    } else if (window._activeExpressOrderDraft) {
-      const d = window._activeExpressOrderDraft;
-      window._activeExpressOrderDraft = null;
-      openExpressOrderModal(d);
-    }
-  });
 
   $("#edit-client-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -7382,37 +7539,10 @@ function openEditClientModal(client, onSavedCallback) {
       closeModal();
       await refresh(false);
       showToast("✅ Cliente actualizado con éxito.");
-
-      if (window._activeOrderFormDraft) {
-        const draft = window._activeOrderFormDraft;
-        draft.cliente = formPayload.name;
-        if (formPayload.phone) draft.telefono = formPayload.phone;
-        window._activeOrderFormDraft = null;
-        formOrder(draft);
-      } else if (window._activeExpressOrderDraft) {
-        const draft = window._activeExpressOrderDraft;
-        draft.cliente = formPayload.name;
-        if (formPayload.phone) draft.telefono = formPayload.phone;
-        window._activeExpressOrderDraft = null;
-        openExpressOrderModal(draft);
-      } else if (typeof onSavedCallback === "function") {
+      if (typeof onSavedCallback === "function") {
         onSavedCallback(formPayload);
-      } else {
-        const expCli = document.getElementById("express-cliente");
-        const expTel = document.getElementById("express-telefono");
-        if (expCli && expTel) {
-          expCli.value = formPayload.name;
-          if (formPayload.phone) expTel.value = formPayload.phone;
-        }
-        const stdCli = document.getElementById("input-cliente");
-        const stdTel = document.getElementById("input-telefono");
-        if (stdCli && stdTel) {
-          stdCli.value = formPayload.name;
-          if (formPayload.phone) stdTel.value = formPayload.phone;
-        }
-        if (typeof window.renderClientDirectorySettings === "function") {
-          window.renderClientDirectorySettings();
-        }
+      } else if (typeof window.renderClientDirectorySettings === "function") {
+        window.renderClientDirectorySettings();
       }
     } catch(err) {
       btn.disabled = false;
@@ -8109,7 +8239,20 @@ function formOrder(initialData = null) {
           </button>
         </div>
       </label>
-      <label class="field"><span class="field-label">TELÉFONO WHATSAPP</span><input id="input-telefono" name="telefono" type="tel" placeholder="Ingresa o cambia el número" value="${escapeHtml(initialData?.telefono || '')}"></label>
+      <label class="field">
+        <span class="field-label" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>TELÉFONO WHATSAPP</span>
+          <button type="button" id="fc-quick-save-phone-btn" style="display:none; background:#10b981; color:white; border:none; border-radius:4px; padding:2px 8px; font-size:10.5px; font-weight:bold; cursor:pointer;" title="Guardar este teléfono en la ficha del cliente en Google Sheets">
+            💾 Guardar en Directorio
+          </button>
+        </span>
+        <div style="display:flex; gap:6px;">
+          <input id="input-telefono" name="telefono" type="tel" placeholder="Ingresa o cambia el número" value="${escapeHtml(initialData?.telefono || '')}" style="flex:1;">
+          <button type="button" id="fc-edit-full-btn" class="secondary-button" style="padding:6px 10px; font-size:11.5px; white-space:nowrap; background:#0ea5e9; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;" title="Editar o consultar ficha completa de este cliente (delivery, dirección, etc.)">
+            ✏️ Ficha
+          </button>
+        </div>
+      </label>
       
       <label class="field"><span class="field-label">TIPO DE TRABAJO</span>
         ${types.length ? `<select id="ft-select" style="margin-bottom:6px;"><option value="">-- Seleccionar existente --</option>${types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}<option value="__CUSTOM__">Escribir otro nuevo...</option></select>` : ''}
@@ -8514,10 +8657,55 @@ function formOrder(initialData = null) {
 
   document.getElementById("fc-edit-btn")?.addEventListener("click", () => {
     const val = $("#fc-select")?.value;
-    const curDraft = captureCurrentFormOrderData();
-    window._activeOrderFormDraft = curDraft;
     const clientToEdit = (val !== "" && clients[val]) ? clients[val] : { name: $("#input-cliente")?.value || "", phone: $("#input-telefono")?.value || "" };
     openEditClientModal(clientToEdit);
+  });
+
+  document.getElementById("fc-edit-full-btn")?.addEventListener("click", () => {
+    const cliName = $("#input-cliente")?.value?.trim() || "";
+    const phoneVal = $("#input-telefono")?.value?.trim() || "";
+    const c = clients.find(x => (x.name||"").toLowerCase() === cliName.toLowerCase());
+    const clientToEdit = c ? { ...c, phone: phoneVal || c.phone } : { name: cliName, phone: phoneVal };
+    openEditClientModal(clientToEdit);
+  });
+
+  $("#input-telefono")?.addEventListener("input", () => {
+    const btn = document.getElementById("fc-quick-save-phone-btn");
+    const cliName = $("#input-cliente")?.value?.trim();
+    if (btn) {
+      btn.style.display = (cliName && $("#input-telefono")?.value?.trim()) ? "inline-flex" : "none";
+    }
+  });
+
+  document.getElementById("fc-quick-save-phone-btn")?.addEventListener("click", async () => {
+    const cliName = $("#input-cliente")?.value?.trim();
+    const phoneVal = $("#input-telefono")?.value?.trim();
+    if (!cliName) return alert("Por favor escribe el nombre del cliente primero.");
+    if (!phoneVal) return alert("Por favor escribe el teléfono del cliente.");
+
+    const btn = document.getElementById("fc-quick-save-phone-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Guardando...";
+    try {
+      await api("profile_edit_client", {
+        originalName: cliName,
+        name: cliName,
+        phone: phoneVal
+      });
+      let c = (state.frequentClients || []).find(x => (x.name||'').toLowerCase() === cliName.toLowerCase());
+      if (c) {
+        c.phone = phoneVal;
+      } else {
+        state.frequentClients.push({ name: cliName, phone: phoneVal, delivery: "No" });
+      }
+      showToast(`✅ Teléfono guardado para ${cliName} en Google Sheets.`);
+      btn.style.display = "none";
+    } catch(err) {
+      alert("Error al guardar teléfono: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "💾 Guardar en Directorio";
+    }
   });
 
   $("#motivo-select")?.addEventListener("change", (e) => {
@@ -9768,8 +9956,18 @@ window.openExpressOrderModal = function(initialDraft = null) {
 
       <!-- Teléfono -->
       <label class="field">
-        <span class="field-label">TELÉFONO / WHATSAPP:</span>
-        <input type="tel" id="express-telefono" name="telefono" placeholder="Ej. 04141234567">
+        <span class="field-label" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>TELÉFONO / WHATSAPP:</span>
+          <button type="button" id="express-quick-save-phone-btn" style="display:none; background:#10b981; color:white; border:none; border-radius:4px; padding:2px 8px; font-size:10px; font-weight:bold; cursor:pointer;" title="Guardar este teléfono en la ficha del cliente en Google Sheets">
+            💾 Guardar en Directorio
+          </button>
+        </span>
+        <div style="display:flex; gap:6px;">
+          <input type="tel" id="express-telefono" name="telefono" placeholder="Ej. 04141234567" style="flex:1;">
+          <button type="button" id="express-edit-full-btn" class="secondary-button" style="padding:4px 8px; font-size:11px; white-space:nowrap; background:#0ea5e9; color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;" title="Editar ficha completa de este cliente">
+            ✏️ Ficha
+          </button>
+        </div>
       </label>
 
       <!-- Motivo / Temática Explícito con Selector Desplegable -->
@@ -10029,12 +10227,53 @@ window.openExpressOrderModal = function(initialDraft = null) {
   if (editCliBtn) {
     editCliBtn.addEventListener("click", () => {
       const opt = selCli?.options[selCli.selectedIndex];
-      const curDraft = captureCurrentExpressOrderFormData();
-      window._activeExpressOrderDraft = curDraft;
       const clientObj = (opt && opt.value) ? clients.find(c => (c.name || c.nombre) === opt.value) : { name: document.getElementById("express-cliente")?.value || "", phone: document.getElementById("express-telefono")?.value || "" };
       openEditClientModal(clientObj || { name: opt?.value || "", phone: "" });
     });
   }
+
+  document.getElementById("express-edit-full-btn")?.addEventListener("click", () => {
+    const cliName = document.getElementById("express-cliente")?.value?.trim() || "";
+    const phoneVal = document.getElementById("express-telefono")?.value?.trim() || "";
+    const c = clients.find(x => (x.name || x.nombre || '').toLowerCase() === cliName.toLowerCase());
+    const clientObj = c ? { ...c, phone: phoneVal || c.phone || c.telefono } : { name: cliName, phone: phoneVal };
+    openEditClientModal(clientObj);
+  });
+
+  document.getElementById("express-telefono")?.addEventListener("input", () => {
+    const btn = document.getElementById("express-quick-save-phone-btn");
+    const cliName = document.getElementById("express-cliente")?.value?.trim();
+    if (btn) {
+      btn.style.display = (cliName && document.getElementById("express-telefono")?.value?.trim()) ? "inline-flex" : "none";
+    }
+  });
+
+  document.getElementById("express-quick-save-phone-btn")?.addEventListener("click", async () => {
+    const cliName = document.getElementById("express-cliente")?.value?.trim();
+    const phoneVal = document.getElementById("express-telefono")?.value?.trim();
+    if (!cliName) return alert("Por favor escribe el nombre del cliente primero.");
+    if (!phoneVal) return alert("Por favor escribe el teléfono del cliente.");
+
+    const btn = document.getElementById("express-quick-save-phone-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Guardando...";
+    try {
+      await api("profile_edit_client", {
+        originalName: cliName,
+        name: cliName,
+        phone: phoneVal
+      });
+      let c = (state.frequentClients || []).find(x => (x.name||'').toLowerCase() === cliName.toLowerCase());
+      if (c) c.phone = phoneVal;
+      showToast(`✅ Teléfono guardado para ${cliName} en Google Sheets.`);
+      btn.style.display = "none";
+    } catch(err) {
+      alert("Error al guardar teléfono: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "💾 Guardar en Directorio";
+    }
+  });
 
     const motSel = document.getElementById("express-motivo-select");
   const motInp = document.getElementById("express-motivo");
