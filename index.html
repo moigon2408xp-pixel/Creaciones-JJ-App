@@ -27,7 +27,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <link rel="stylesheet" href="./styles.css?v=92"/>
+  <link rel="stylesheet" href="./styles.css?v=93"/>
   <title>Creaciones JJ – Prioridad Producción</title>
   <!-- CSS crítico: oculta workspace ANTES de que corra cualquier JS -->
   <style>
@@ -49,6 +49,14 @@
 
       <!-- Logo de la empresa -->
       <div class="login-logo-wrapper">
+        <span class="christmas-santa-hat" aria-hidden="true">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 75 Q 40 10 82 25 Q 92 30 85 45 Q 60 48 35 75 Z" fill="#e11d48"/>
+            <path d="M12 70 C 12 65, 88 65, 88 70 C 88 78, 12 78, 12 70 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+            <circle cx="86" cy="30" r="11" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+            <path d="M25 72 Q 50 68 75 72" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
         <img
           src="./logo_creaciones_jj.png"
           alt="Creaciones JJ"
@@ -104,9 +112,18 @@
       <!-- HEADER FLOTANTE STICKY (ESTILO SICS 2026) -->
       <header class="jj-main-header">
         <a class="jj-header-brand" onclick="navigate('modules')">
-          <img src="./logo_creaciones_jj.png" class="jj-brand-logo-img" alt="Creaciones JJ">
+          <div class="jj-brand-logo-wrap">
+            <span class="christmas-santa-hat-sm" aria-hidden="true">
+              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 75 Q 40 10 82 25 Q 92 30 85 45 Q 60 48 35 75 Z" fill="#e11d48"/>
+                <path d="M12 70 C 12 65, 88 65, 88 70 C 88 78, 12 78, 12 70 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+                <circle cx="86" cy="30" r="11" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+              </svg>
+            </span>
+            <img src="./logo_creaciones_jj.png" class="jj-brand-logo-img" alt="Creaciones JJ">
+          </div>
           <div>
-            <div class="jj-brand-title">Creaciones JJ</div>
+            <div class="jj-brand-title">Creaciones JJ <span class="navidad-tree">🎄</span></div>
             <div class="jj-brand-sub">Ochoa &amp; Risquez · Taller</div>
           </div>
         </a>
@@ -259,13 +276,13 @@
   <div id="toast" class="toast" role="status"></div>
 
   <script src="./firebase-config.js"></script>
-  <script src="./app-registrar-fix.js?v=95"></script>
+  <script src="./app-registrar-fix.js?v=96"></script>
 
   <script>
     /* ---- PWA y Registro de Service Worker para PC / Móvil ---- */
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('./sw.js?v=2').then(function(reg) {
+        navigator.serviceWorker.register('./sw.js?v=3').then(function(reg) {
           console.log('SW Creaciones JJ registrado:', reg.scope);
         }).catch(function(err) {
           console.warn('Error al registrar SW:', err);
