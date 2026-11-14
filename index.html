@@ -27,7 +27,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <link rel="stylesheet" href="./styles.css?v=93"/>
+  <link rel="stylesheet" href="./styles.css?v=97"/>
   <title>Creaciones JJ – Prioridad Producción</title>
   <!-- CSS crítico: oculta workspace ANTES de que corra cualquier JS -->
   <style>
@@ -47,14 +47,62 @@
         <div class="login-bg-circle login-bg-circle--2"></div>
       </div>
 
-      <!-- Logo de la empresa -->
+      <!-- Logo de la empresa con Gorrito Navideño Adaptado al Contorno Circular -->
       <div class="login-logo-wrapper">
         <span class="christmas-santa-hat" aria-hidden="true">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15 75 Q 40 10 82 25 Q 92 30 85 45 Q 60 48 35 75 Z" fill="#e11d48"/>
-            <path d="M12 70 C 12 65, 88 65, 88 70 C 88 78, 12 78, 12 70 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
-            <circle cx="86" cy="30" r="11" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
-            <path d="M25 72 Q 50 68 75 72" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"/>
+          <svg viewBox="0 0 100 85" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="santaRedGrad" x1="15%" y1="10%" x2="85%" y2="85%">
+                <stop offset="0%" stop-color="#ff3b5c"/>
+                <stop offset="35%" stop-color="#e11d48"/>
+                <stop offset="75%" stop-color="#be123c"/>
+                <stop offset="100%" stop-color="#881337"/>
+              </linearGradient>
+              <linearGradient id="brimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="80%" stop-color="#f1f5f9"/>
+                <stop offset="100%" stop-color="#cbd5e1"/>
+              </linearGradient>
+              <linearGradient id="pomGrad" x1="20%" y1="20%" x2="80%" y2="80%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="75%" stop-color="#f8fafc"/>
+                <stop offset="100%" stop-color="#cbd5e1"/>
+              </linearGradient>
+              <filter id="hatShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.35"/>
+              </filter>
+            </defs>
+
+            <!-- Cuerpo Rojo del Gorro curvado hacia la derecha -->
+            <path d="M 22 56 C 21 38 35 15 54 13 C 65 12 77 17 84 27 C 89 33 92 41 90 48 C 88 52 82 52 78 50 C 74 44 72 32 64 25 C 56 18 40 25 34 38 C 30 46 26 53 22 56 Z" 
+                  fill="url(#santaRedGrad)"/>
+            
+            <!-- Sombra interior en el pliegue del gorro -->
+            <path d="M 54 13 C 65 12 77 17 84 27 C 88 33 90 41 89 47 C 85 43 80 32 72 26 C 65 21 58 17 54 13 Z" 
+                  fill="#700e28" opacity="0.35"/>
+                  
+            <!-- Brillo de iluminación en la cresta izquierda -->
+            <path d="M 27 50 C 27 38 36 22 48 16 C 45 19 33 30 31 51 Z" 
+                  fill="#ffffff" opacity="0.25"/>
+
+            <!-- Pompón blanco esponjoso cayendo a la derecha -->
+            <g filter="url(#hatShadow)">
+              <circle cx="93" cy="50" r="8" fill="url(#pomGrad)"/>
+              <circle cx="89" cy="46" r="5" fill="url(#pomGrad)"/>
+              <circle cx="97" cy="47" r="5" fill="url(#pomGrad)"/>
+              <circle cx="95" cy="54" r="5" fill="url(#pomGrad)"/>
+            </g>
+
+            <!-- Borde / Ribete blanco curvado que abraza el contorno circular del logo -->
+            <g filter="url(#hatShadow)">
+              <path d="M 14 62 C 12 57 17 53 23 55 C 27 51 35 50 41 53 C 47 48 56 47 62 50 C 68 46 76 47 80 50 C 85 54 83 60 79 63 C 74 67 67 65 61 63 C 55 67 45 68 39 66 C 33 69 25 69 19 66 C 15 66 12 65 14 62 Z" 
+                    fill="url(#brimGrad)"/>
+              <ellipse cx="23" cy="59" rx="6.5" ry="5.5" fill="url(#brimGrad)"/>
+              <ellipse cx="36" cy="58" rx="7.5" ry="6" fill="url(#brimGrad)"/>
+              <ellipse cx="51" cy="56" rx="8" ry="6" fill="url(#brimGrad)"/>
+              <ellipse cx="66" cy="55" rx="7.5" ry="5.5" fill="url(#brimGrad)"/>
+              <ellipse cx="77" cy="55" rx="6.5" ry="5" fill="url(#brimGrad)"/>
+            </g>
           </svg>
         </span>
         <img
@@ -114,21 +162,58 @@
         <a class="jj-header-brand" onclick="navigate('modules')">
           <div class="jj-brand-logo-wrap">
             <span class="christmas-santa-hat-sm" aria-hidden="true">
-              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15 75 Q 40 10 82 25 Q 92 30 85 45 Q 60 48 35 75 Z" fill="#e11d48"/>
-                <path d="M12 70 C 12 65, 88 65, 88 70 C 88 78, 12 78, 12 70 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
-                <circle cx="86" cy="30" r="11" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+              <svg viewBox="0 0 100 85" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="santaRedGradSm" x1="15%" y1="10%" x2="85%" y2="85%">
+                    <stop offset="0%" stop-color="#ff3b5c"/>
+                    <stop offset="35%" stop-color="#e11d48"/>
+                    <stop offset="100%" stop-color="#881337"/>
+                  </linearGradient>
+                </defs>
+                <path d="M 22 56 C 21 38 35 15 54 13 C 65 12 77 17 84 27 C 89 33 92 41 90 48 C 88 52 82 52 78 50 C 74 44 72 32 64 25 C 56 18 40 25 34 38 C 30 46 26 53 22 56 Z" fill="url(#santaRedGradSm)"/>
+                <circle cx="93" cy="50" r="9" fill="#ffffff"/>
+                <path d="M 14 62 C 16 52 76 46 80 52 C 84 57 74 65 61 63 C 45 68 25 68 14 62 Z" fill="#ffffff"/>
+                <ellipse cx="23" cy="59" rx="6.5" ry="5.5" fill="#ffffff"/>
+                <ellipse cx="36" cy="58" rx="7.5" ry="6" fill="#ffffff"/>
+                <ellipse cx="51" cy="56" rx="8" ry="6" fill="#ffffff"/>
+                <ellipse cx="66" cy="55" rx="7.5" ry="5.5" fill="#ffffff"/>
+                <ellipse cx="77" cy="55" rx="6.5" ry="5" fill="#ffffff"/>
               </svg>
             </span>
             <img src="./logo_creaciones_jj.png" class="jj-brand-logo-img" alt="Creaciones JJ">
           </div>
           <div>
-            <div class="jj-brand-title">Creaciones JJ <span class="navidad-tree">🎄</span></div>
+            <div class="jj-brand-title">Creaciones JJ <span class="navidad-tree-svg" aria-label="Árbol de Navidad">
+              <svg viewBox="0 0 24 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Tronco -->
+                <rect x="10.2" y="21.5" width="3.6" height="4" rx="0.8" fill="#854d0e"/>
+                <!-- Base nivel 3 -->
+                <path d="M4 21.5 C6.5 20.2 17.5 20.2 20 21.5 C19.2 19 16 16.5 16 16.5 L17.5 16.5 C16 14 13.5 12 12 12 C10.5 12 8 14 6.5 16.5 L8 16.5 C8 16.5 4.8 19 4 21.5 Z" fill="#047857"/>
+                <!-- Nivel 2 -->
+                <path d="M6 16.8 C8 15.6 16 15.6 18 16.8 C17.2 14.5 14.8 12.2 14.8 12.2 L16 12.2 C14.5 9.8 13 8 12 8 C11 8 9.5 9.8 8 12.2 L9.2 12.2 C9.2 12.2 6.8 14.5 6 16.8 Z" fill="#059669"/>
+                <!-- Nivel 1 cúspide -->
+                <path d="M8.2 12.5 C9.8 11.5 14.2 11.5 15.8 12.5 C15 10 13.5 7.5 12 4.5 C10.5 7.5 9 10 8.2 12.5 Z" fill="#10b981"/>
+                <!-- Bolas brillantes decorativas -->
+                <circle cx="8" cy="19.5" r="1.1" fill="#f43f5e"/>
+                <circle cx="12" cy="18.5" r="1.1" fill="#fbbf24"/>
+                <circle cx="16" cy="19.5" r="1.1" fill="#06b6d4"/>
+                <circle cx="10" cy="14.5" r="1" fill="#ec4899"/>
+                <circle cx="14" cy="14.8" r="1" fill="#fbbf24"/>
+                <circle cx="12" cy="10" r="0.95" fill="#f43f5e"/>
+                <!-- Estrella dorada brillante -->
+                <path d="M12 1.2 L13.1 3.5 L15.6 3.8 L13.8 5.5 L14.2 8 L12 6.8 L9.8 8 L10.2 5.5 L8.4 3.8 L10.9 3.5 Z" fill="#f59e0b" stroke="#fef08a" stroke-width="0.5"/>
+              </svg>
+            </span></div>
             <div class="jj-brand-sub">Ochoa &amp; Risquez · Taller</div>
           </div>
         </a>
 
         <div class="jj-header-controls">
+          <!-- Botón Detalle Inspirador del Día -->
+          <button type="button" id="btnDailyMotivation" class="control-btn-circle" onclick="window.showDailyMotivationModal(true)" title="Tu mensaje motivador de hoy ✨" style="background:rgba(251,191,36,0.16); border:1px solid rgba(251,191,36,0.45); color:#fbbf24; width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; cursor:pointer; font-size:15px; box-shadow:0 2px 8px rgba(251,191,36,0.25);">
+            <span style="font-size:15px; line-height:1;">✨</span>
+          </button>
+
           <!-- Botón Pedido Rápido Mostrador -->
           <button type="button" id="btn-full-order" class="control-btn-circle" onclick="formOrder()" title="Registrar Pedido Completo" style="background:#0ea5e9; color:white; border:none; padding:8px; border-radius:50%; font-weight:800; font-size:14px; display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; box-shadow:0 3px 10px rgba(14,165,233,0.35); width:36px; height:36px;">
             <i class="fas fa-plus"></i>
@@ -275,14 +360,43 @@
   <dialog id="modal" class="modal"></dialog>
   <div id="toast" class="toast" role="status"></div>
 
+  <!-- ========== MODAL DE MENSAJE MOTIVACIONAL DIARIO (DETALLE CREACIONES JJ) ========== -->
+  <div id="jj-daily-motivation-backdrop" class="jj-motivation-backdrop hidden" aria-hidden="true" onclick="if(event.target === this) window.closeDailyMotivationModal()">
+    <div class="jj-motivation-card">
+      <div class="jj-motivation-decor-top">
+        <span class="jj-motivation-badge">
+          <span class="jj-badge-sparkle">✨</span> <span id="jjMotivTag">Detalle Creaciones JJ</span> · Taller
+        </span>
+        <button type="button" class="jj-motivation-close-btn" onclick="window.closeDailyMotivationModal()" title="Cerrar ventana">✕</button>
+      </div>
+      <div class="jj-motivation-icon-wrap" id="jjMotivIcon">🌟</div>
+      <h2 class="jj-motivation-title" id="jjMotivTitle">¡Buenos días, Valentina! ✨</h2>
+      <div class="jj-motivation-body" id="jjMotivBody">
+        Cada pieza que pasa por tus manos lleva una dosis de magia. Gracias por tu dedicación, por cuidar cada corte y por hacer que los momentos especiales de nuestros clientes brillen. ¡Hoy será una jornada fantástica!
+      </div>
+      <div class="jj-motivation-mantra-box">
+        <div class="jj-mantra-label">💡 PENSAMIENTO DE HOY</div>
+        <div class="jj-mantra-text" id="jjMotivMantra">"La excelencia no es un acto, es el cariño que pones en cada acabado."</div>
+      </div>
+      <div class="jj-motivation-actions">
+        <button type="button" class="primary-button jj-motivation-start-btn" onclick="window.closeDailyMotivationModal()">
+          ¡A darle con todo hoy! 💪✨
+        </button>
+      </div>
+      <p class="jj-motivation-footer-note">
+        ✨ Un detalle pensado para ti al empezar tu jornada. ¡Gracias por todo tu esfuerzo diario!
+      </p>
+    </div>
+  </div>
+
   <script src="./firebase-config.js"></script>
-  <script src="./app-registrar-fix.js?v=96"></script>
+  <script src="./app-registrar-fix.js?v=97"></script>
 
   <script>
     /* ---- PWA y Registro de Service Worker para PC / Móvil ---- */
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('./sw.js?v=3').then(function(reg) {
+        navigator.serviceWorker.register('./sw.js?v=4').then(function(reg) {
           console.log('SW Creaciones JJ registrado:', reg.scope);
         }).catch(function(err) {
           console.warn('Error al registrar SW:', err);
