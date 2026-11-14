@@ -1,4 +1,4 @@
-// Service Worker para Creaciones JJ - Notificaciones Push y PWA de Escritorio
+// Service Worker para Creaciones JJ - Notificaciones Push y PWA de Escritorio (v4.0.0)
 self.addEventListener('install', function(event) {
   self.skipWaiting();
 });
