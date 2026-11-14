@@ -9365,6 +9365,11 @@ function doLogin(e) {
       showWorkspace();
       render();
       refresh(false);
+      setTimeout(() => {
+        if (typeof checkAndShowDailyMotivation === "function") {
+          checkAndShowDailyMotivation();
+        }
+      }, 700);
     } else {
       throw new Error("No se pudo iniciar sesión. Respuesta inválida del servidor.");
     }
@@ -9437,6 +9442,11 @@ if (state.session) {
   showWorkspace();
   render();
   refresh(false);
+  setTimeout(() => {
+    if (typeof checkAndShowDailyMotivation === "function") {
+      checkAndShowDailyMotivation();
+    }
+  }, 800);
 } else {
   showLogin();
 }
@@ -15622,3 +15632,603 @@ window.openWorkshopPricesModal = function() {
     </div>
   `);
 };
+
+/* =========================================================================
+   SISTEMA DE MENSAJES MOTIVACIONALES DIARIOS PERSONALIZADOS (CREACIONES JJ)
+   - Personalizados con el nombre de cada trabajador/a.
+   - Rotación matemática determinista (coprima 17 mod 65) garantizando:
+     * Mensajes distintos cada día del mes para cada trabajador.
+     * Cero repetición entre trabajadores en una misma jornada.
+     * Cero repetición en semanas y meses consecutivos (historial en memoria).
+   - No invasivo: Se muestra SOLO 1 vez al iniciar jornada y no se repite durante el día.
+   - Botón permanente ✨ en el header para releerlo cuando el usuario desee.
+   ========================================================================= */
+
+const DAILY_MOTIVATION_MESSAGES = [
+  {
+    title: "✨ ¡Tu talento transforma cada detalle, {nombre}! 🎨",
+    body: "En Creaciones JJ, cada pieza que pasa por tus manos lleva una dosis de magia. Gracias por tu dedicación, por cuidar cada corte y por hacer que los momentos especiales de nuestros clientes brillen. ¡Hoy será una jornada fantástica!",
+    mantra: "La excelencia no es un acto, es el cariño que pones en cada acabado.",
+    tag: "Pasión por los Detalles",
+    icon: "🎨"
+  },
+  {
+    title: "🌟 ¡Buenos días, {nombre}! Hoy el taller brilla contigo ✨",
+    body: "Detrás de cada pedido entregado a tiempo hay horas de concentración, paciencia y entrega. Tu esfuerzo diario es el pilar de este equipo. ¡Arranca este día sabiendo que tu trabajo marca la diferencia!",
+    mantra: "Cada proyecto terminado con amor es una sonrisa asegurada para quien lo recibe.",
+    tag: "Pilar del Taller",
+    icon: "🌟"
+  },
+  {
+    title: "🎄 ¡Feliz y productiva jornada, {nombre}! 💖",
+    body: "La temporada navideña trae alegría y mucho movimiento, pero con tu energía y constancia todo fluye con armonía. ¡Gracias por tu compromiso y por ponerle el corazón a Creaciones JJ!",
+    mantra: "Con calma, precisión y buena actitud, hasta el pedido más complejo sale perfecto.",
+    tag: "Espíritu & Energía",
+    icon: "🎄"
+  },
+  {
+    title: "💎 ¡Tu destreza y precisión son únicas, {nombre}! ✂️",
+    body: "Armar, diseñar y perfeccionar no es tarea fácil, pero tú haces que parezca sencillo gracias a tu habilidad. Tómate un respiro, disfruta el proceso y haz de hoy otra obra maestra.",
+    mantra: "El verdadero arte está en la paciencia con la que cuidamos cada milímetro.",
+    tag: "Destreza & Arte",
+    icon: "💎"
+  },
+  {
+    title: "☀️ ¡Un gran día para crear sonrisas, {nombre}! 🚀",
+    body: "Cuando un cliente recibe su topper, sus letras o su caja y se le iluminan los ojos, es por el empeño que pusiste en cada paso. ¡Qué orgullo contar con tu dedicación en el equipo!",
+    mantra: "No hacemos solo manualidades; creamos recuerdos que duran toda la vida.",
+    tag: "Impacto Real",
+    icon: "☀️"
+  },
+  {
+    title: "🌸 ¡Buenos días, {nombre}! Tu creatividad inspira al equipo ✨",
+    body: "Tu capacidad para resolver retos y ponerle un toque impecable a cada trabajo es admirable. Que la jornada de hoy esté llena de fluidez, concentración y satisfacción.",
+    mantra: "La creatividad nace del corazón y se nota en cada resultado.",
+    tag: "Creatividad & Enfoque",
+    icon: "🌸"
+  },
+  {
+    title: "💪 ¡Fuerza, talento y entusiasmo hoy, {nombre}! ⚡",
+    body: "Los días intensos demuestran de qué estamos hechos. Tu profesionalismo y tus ganas de sacar las cosas adelante inspiran a todo el taller. ¡Vamos por un día genial!",
+    mantra: "Paso a paso, pieza por pieza, logramos metas increíbles.",
+    tag: "Fuerza & Compromiso",
+    icon: "💪"
+  },
+  {
+    title: "🎁 ¡Tu esfuerzo tiene un valor inmenso, {nombre}! 🌟",
+    body: "A veces la rutina nos hace olvidar lo importante que es cada rol. Hoy queremos recordarte que en Creaciones JJ valoramos profundamente todo lo que aportas con tu trabajo diario.",
+    mantra: "Hacer las cosas con ganas convierte lo ordinario en algo extraordinario.",
+    tag: "Gratitud & Valor",
+    icon: "🎁"
+  },
+  {
+    title: "✨ ¡La magia de tus manos hace la fiesta, {nombre}! 🎈",
+    body: "Cada cumpleaños, bautizo o celebración cobra vida gracias a los detalles que perfeccionas aquí en el taller. Comienza hoy sintiéndote orgulloso/a de tu talento.",
+    mantra: "Donde hay dedicación y esmero, el resultado siempre emociona.",
+    tag: "Magia en las Manos",
+    icon: "✨"
+  },
+  {
+    title: "🎯 ¡Enfoque, precisión y tranquilidad para hoy, {nombre}! 🌈",
+    body: "Respira hondo y confía en tu experiencia. Cada pedido tiene su ritmo y tu paciencia es la clave para que todo quede pulcro y hermoso. ¡Que tengas un día brillante!",
+    mantra: "La calma y la precisión son las mejores compañeras de la calidad.",
+    tag: "Precisión & Calma",
+    icon: "🎯"
+  },
+  {
+    title: "🌺 ¡Buenos días, {nombre}! Qué alegría coincidir contigo en el taller 💫",
+    body: "Tu buena vibra y tu dedicación hacen que el ambiente de trabajo sea mucho más cálido y productivo. Gracias por poner tu mejor disposición en cada jornada.",
+    mantra: "Un equipo unido y con buena actitud logra cosas asombrosas.",
+    tag: "Compañerismo & Calidez",
+    icon: "🌺"
+  },
+  {
+    title: "✂️ ¡Tu precisión es el sello de calidad de la marca, {nombre}! 💎",
+    body: "En el mundo de los detalles finos, tu ojo crítico y tus manos firmes garantizan la distinción de Creaciones JJ. ¡A brillar en cada creación de hoy!",
+    mantra: "La perfección no es casualidad; es la suma de mil pequeños cuidados.",
+    tag: "Sello de Calidad",
+    icon: "✂️"
+  },
+  {
+    title: "🌟 ¡Que hoy todo te salga a pedir de boca, {nombre}! 🍀",
+    body: "Empieza tu día con una sonrisa. Las mejores ideas y los mejores resultados surgen cuando disfrutamos lo que hacemos. ¡Toda la buena energía para ti!",
+    mantra: "Disfrutar el proceso es el secreto para que el resultado sea inolvidable.",
+    tag: "Buena Vibra",
+    icon: "🌟"
+  },
+  {
+    title: "🎄 ¡Espíritu navideño y manos a la obra, {nombre}! 🔔",
+    body: "La Navidad es época de ilusión, y en nuestro taller somos los artesanos que la construyen. Gracias por tu entrega incansable en cada entrega.",
+    mantra: "Llevar alegría a los hogares es el regalo más hermoso de nuestro oficio.",
+    tag: "Navidad en el Taller",
+    icon: "🎄"
+  },
+  {
+    title: "🔥 ¡Tu constancia es digna de admirar, {nombre}! 🚀",
+    body: "Día tras día demuestras tu lealtad, tu puntualidad y tu amor por el buen trabajo. Esa constancia es lo que nos hace grandes como taller y como familia.",
+    mantra: "La constancia vence lo que la dicha no alcanza.",
+    tag: "Constancia & Orgullo",
+    icon: "🔥"
+  },
+  {
+    title: "🎨 ¡Hoy es un lienzo en blanco para tu talento, {nombre}! 🌈",
+    body: "Cada jornada es una nueva oportunidad para demostrar de lo que eres capaz. Despliega tu creatividad y ponle tu sello único a cada pedido.",
+    mantra: "Tu creatividad no tiene límites cuando crees en tu capacidad.",
+    tag: "Creatividad Pura",
+    icon: "🎨"
+  },
+  {
+    title: "💖 ¡Gracias por tu empeño y dedicación sincera, {nombre}! ✨",
+    body: "Sabemos que hay días más retadores que otros, pero tu perseverancia siempre supera cualquier obstáculo. ¡Mucho ánimo y éxito en tu turno de hoy!",
+    mantra: "Cada reto superado es una habilidad más que sumas a tu experiencia.",
+    tag: "Superación Continua",
+    icon: "💖"
+  },
+  {
+    title: "🚀 ¡A conquistar la jornada con entusiasmo, {nombre}! ⚡",
+    body: "La mejor manera de empezar el día es con la certeza de que tu trabajo vale oro. En Creaciones JJ somos afortunados de contar con tus manos y tu corazón.",
+    mantra: "Ponle entusiasmo a lo que haces y el día te devolverá satisfacciones.",
+    tag: "Entusiasmo & Valor",
+    icon: "🚀"
+  },
+  {
+    title: "🌸 ¡Buenos días, {nombre}! Que hoy la inspiración te acompañe 🌿",
+    body: "Que cada combinación de colores, cada pliegue y cada trazo fluyan de manera armónica. Tu sentido estético eleva la calidad de todo lo que hacemos.",
+    mantra: "El amor por lo bello se refleja en cada terminación.",
+    tag: "Sentido Estético",
+    icon: "🌸"
+  },
+  {
+    title: "⭐ ¡Tu compromiso marca el compás del taller, {nombre}! 🏆",
+    body: "El ritmo y la puntualidad de nuestras entregas son posibles gracias a personas comprometidas como tú. ¡Gracias por no rendirte y dar siempre lo mejor!",
+    mantra: "La puntualidad y la calidad son el reflejo del respeto por lo que hacemos.",
+    tag: "Compromiso Firme",
+    icon: "⭐"
+  },
+  {
+    title: "🎁 ¡Hoy construyes recuerdos que serán tesoros, {nombre}! 🎈",
+    body: "Una fiesta pasa en horas, pero las fotos con tus creaciones quedan para siempre en el álbum de una familia. ¡Qué hermoso impacto tiene tu trabajo!",
+    mantra: "Crear recuerdos es uno de los oficios más nobles del mundo.",
+    tag: "Impacto Emocional",
+    icon: "🎁"
+  },
+  {
+    title: "💎 ¡Tu paciencia y esmero son pura maestría, {nombre}! 🕊️",
+    body: "Las cosas buenas toman tiempo, y tu paciencia para cuidar cada borde y cada acabado demuestra tu nivel de maestría. ¡Que tengas un día sereno y productivo!",
+    mantra: "La maestría se construye con paciencia y cariño en cada detalle.",
+    tag: "Maestría & Paciencia",
+    icon: "💎"
+  },
+  {
+    title: "✨ ¡Buenos días, {nombre}! Que la energía positiva te guíe hoy 💫",
+    body: "Inicia tu turno con mente despejada y confianza plena. Cuentas con un equipo que te apoya y te valora. ¡A romperla hoy en el taller!",
+    mantra: "La confianza en uno mismo es el primer secreto del éxito.",
+    tag: "Confianza & Éxito",
+    icon: "✨"
+  },
+  {
+    title: "🎄 ¡Un día más cerca de la meta con tu ayuda, {nombre}! 🌟",
+    body: "En esta temporada alta, cada orden despachada es un triunfo compartido. Gracias por tu ritmo, tu energía y tu sonrisa en el taller.",
+    mantra: "Las grandes metas se alcanzan con pasos firmes y corazón alegre.",
+    tag: "Triunfos Compartidos",
+    icon: "🎄"
+  },
+  {
+    title: "🌈 ¡El arte de hacer las cosas bien hechas, {nombre}! 🎨",
+    body: "Hacer las cosas bien a la primera es tu mayor virtud. Esa responsabilidad nos da tranquilidad y nos llena de orgullo a todos.",
+    mantra: "La calidad nunca es un accidente; siempre es el fruto del esfuerzo inteligente.",
+    tag: "Calidad Inteligente",
+    icon: "🌈"
+  },
+  {
+    title: "☀️ ¡Buenos días, {nombre}! Tu alegría contagia al taller 🌻",
+    body: "Trabajar con personas positivas hace que las horas pasen volando y los pedidos salgan con más luz. ¡Gracias por aportar tanta buena onda al equipo!",
+    mantra: "La mejor herramienta del taller es una actitud alegre y colaborativa.",
+    tag: "Alegría Compartida",
+    icon: "☀️"
+  },
+  {
+    title: "✂️ ¡Manos hábiles y mente clara para hoy, {nombre}! 💫",
+    body: "Tu coordinación y agilidad para resolver las órdenes son extraordinarias. Concéntrate en una pieza a la vez y verás cómo el día rinde al máximo.",
+    mantra: "Enfócate en el presente y cada tarea fluirá con naturalidad.",
+    tag: "Agilidad & Enfoque",
+    icon: "✂️"
+  },
+  {
+    title: "💖 ¡Tu dedicación es el verdadero motor de Creaciones JJ, {nombre}! 🚀",
+    body: "Detrás del nombre de la marca están las personas que le dan vida todos los días. Hoy queremos darte las gracias por ser parte fundamental de esta historia.",
+    mantra: "El éxito de un taller reside en el corazón de su gente.",
+    tag: "Corazón del Taller",
+    icon: "💖"
+  },
+  {
+    title: "🌟 ¡Que hoy sea un día de logros y satisfacción, {nombre}! 🎯",
+    body: "Al terminar el día, mirarás la mesa de trabajo y sentirás el orgullo de haber cumplido con creces. ¡Comienza hoy con esa misma convicción!",
+    mantra: "La satisfacción del deber cumplido es el mejor premio al final del día.",
+    tag: "Satisfacción & Logros",
+    icon: "🌟"
+  },
+  {
+    title: "🌸 ¡Buenos días, {nombre}! Tu dedicación florece en cada entrega 🌺",
+    body: "Cada detalle ensamblado con cariño es como una semilla que alegra el día de alguien más. Gracias por cuidar tu trabajo con tanta finura.",
+    mantra: "Quien pone amor en lo que hace, siempre recoge admiración y respeto.",
+    tag: "Amor por el Oficio",
+    icon: "🌸"
+  },
+  {
+    title: "⚡ ¡Energía, concentración y triunfo para hoy, {nombre}! 🔥",
+    body: "Tienes la capacidad y las herramientas para tener una jornada impecable. No te apresures: la rapidez viene de la técnica, no del apuro.",
+    mantra: "Técnica, orden y serenidad: la fórmula infalible de la eficiencia.",
+    tag: "Eficiencia & Técnica",
+    icon: "⚡"
+  },
+  {
+    title: "🎁 ¡Un detalle con cariño para empezar tu día, {nombre}! ✨",
+    body: "Queremos que inicies tu jornada sabiendo lo mucho que apreciamos tus madrugadas, tu dedicación y tus ganas de ver crecer este taller.",
+    mantra: "El agradecimiento es la memoria del corazón.",
+    tag: "Reconocimiento Sincero",
+    icon: "🎁"
+  },
+  {
+    title: "💎 ¡Tu ingenio resuelve lo que parece imposible, {nombre}! 💡",
+    body: "Cuando surge un detalle difícil o un material delicado, siempre encuentras la forma de que quede perfecto. ¡Esa es la chispa de los mejores artesanos!",
+    mantra: "El ingenio convierte los desafíos en oportunidades para brillar.",
+    tag: "Ingenio & Chispa",
+    icon: "💎"
+  },
+  {
+    title: "🔔 ¡Buenos días, {nombre}! Que la paz y la alegría reinen hoy 🕊️",
+    body: "Trabajar en un ambiente sereno y armónico saca lo mejor de cada uno de nosotros. Deseamos que tu día sea ligero, ameno y muy provechoso.",
+    mantra: "La armonía interior es el secreto de una productividad serena.",
+    tag: "Paz & Armonía",
+    icon: "🔔"
+  },
+  {
+    title: "🎨 ¡Color, vida y emoción en tus manos hoy, {nombre}! 🌈",
+    body: "Combinar colores, texturas y formas es un don. Aprovéchalo hoy al máximo y deja tu huella personal en cada pedido que completes.",
+    mantra: "El color que le pones a tu trabajo ilumina el día de los demás.",
+    tag: "Don & Talento",
+    icon: "🎨"
+  },
+  {
+    title: "🏆 ¡Eres ejemplo de responsabilidad y entrega, {nombre}! ⭐",
+    body: "Tu ética laboral y tu respeto por los compromisos del taller hablan muy alto de ti. Es un verdadero privilegio trabajar a tu lado.",
+    mantra: "La integridad y el compromiso abren todas las puertas.",
+    tag: "Ética & Responsabilidad",
+    icon: "🏆"
+  },
+  {
+    title: "🎄 ¡Que el espíritu navideño encienda tu creatividad, {nombre}! ✨",
+    body: "En cada figura festiva, en cada lazo y en cada caja hay un pedacito de ilusión navideña. ¡Que tu día esté lleno de esa misma luz y esperanza!",
+    mantra: "La verdadera Navidad vive en el amor con el que servimos a los demás.",
+    tag: "Luz Navideña",
+    icon: "🎄"
+  },
+  {
+    title: "☀️ ¡Buenos días, {nombre}! Hoy es un gran día para superarte 🚀",
+    body: "Cada día eres más rápido/a, más preciso/a y más sabio/a en tu oficio. Celebra tu propio crecimiento mientras avanzas en tu jornada.",
+    mantra: "El único límite a tu crecimiento es el que tú mismo te pones.",
+    tag: "Crecimiento Personal",
+    icon: "☀️"
+  },
+  {
+    title: "💖 ¡Tu presencia hace más fuerte a este equipo, {nombre}! 🤝",
+    body: "Creaciones JJ no es solo una marca; somos una familia de creadores, y tú eres parte esencial de nuestra fuerza. ¡Mucho éxito en tu jornada!",
+    mantra: "Juntos somos imparables; el apoyo mutuo es nuestro mayor tesoro.",
+    tag: "Unión de Equipo",
+    icon: "💖"
+  },
+  {
+    title: "💎 ¡Detallista por naturaleza y profesional por convicción, {nombre}! ✂️",
+    body: "Ese milímetro de más, esa curvita bien pulida, ese pegado limpio... Todo eso es lo que nuestros clientes agradecen. ¡Sigue con ese estándar de oro!",
+    mantra: "Cuidar los detalles pequeños hace gigantes los resultados.",
+    tag: "Estándar de Oro",
+    icon: "💎"
+  },
+  {
+    title: "🌸 ¡Buenos días, {nombre}! Hoy te deseamos tranquilidad y éxito 🍃",
+    body: "Toma las cosas una a una, respira y disfruta de la música del taller y del movimiento creativo. ¡Hoy será un día muy gratificante para ti!",
+    mantra: "Un paso firme a la vez te lleva a la cumbre más alta.",
+    tag: "Tranquilidad & Éxito",
+    icon: "🌸"
+  },
+  {
+    title: "🌟 ¡Tu pasión se nota a leguas, {nombre}! 💫",
+    body: "Cuando a alguien le apasiona su trabajo, las creaciones tienen vida propia. Gracias por transmitir esa pasión en cada pedido de Creaciones JJ.",
+    mantra: "La pasión convierte el trabajo diario en una obra de arte.",
+    tag: "Pasión Viva",
+    icon: "🌟"
+  },
+  {
+    title: "🎈 ¡Hoy llenas de color otra celebración, {nombre}! ✨",
+    body: "Alguien hoy celebrará la vida de su hijo, de su madre o de un amigo gracias a la pieza que tú vas a terminar. ¡Siéntete orgulloso/a de tu misión!",
+    mantra: "Nuestro trabajo celebra los momentos más bonitos de la vida.",
+    tag: "Celebración & Vida",
+    icon: "🎈"
+  },
+  {
+    title: "🔥 ¡Con toda la energía y el ánimo arriba, {nombre}! ⚡",
+    body: "No hay meta difícil cuando se le pone corazón y disciplina. ¡Que hoy superes todas tus expectativas y termines con la frente en alto!",
+    mantra: "La actitud positiva es el imán de los buenos resultados.",
+    tag: "Actitud Ganadora",
+    icon: "🔥"
+  },
+  {
+    title: "🎁 ¡Buenos días, {nombre}! Gracias por tu lealtad y esmero 💝",
+    body: "Tu constancia día a día construye la reputación de excelencia que nos caracteriza. Te deseamos una jornada llena de bendiciones y fluidez.",
+    mantra: "El trabajo honesto y dedicado siempre da los mejores frutos.",
+    tag: "Frutos del Esfuerzo",
+    icon: "🎁"
+  },
+  {
+    title: "🌈 ¡Tu creatividad es una bendición para el taller, {nombre}! 🎨",
+    body: "Ver cómo transformas simples materiales en piezas deslumbrantes es una maravilla. ¡Gracias por compartir tu talento con todos nosotros hoy!",
+    mantra: "La creatividad es la inteligencia divirtiéndose en el taller.",
+    tag: "Bendición Creativa",
+    icon: "🌈"
+  },
+  {
+    title: "✂️ ¡Manos que crean arte y corazón que no se rinde, {nombre}! 💪",
+    body: "Cada corte limpio y cada capa ensamblada demuestran tu dedicación incansable. ¡Que hoy tu esfuerzo rinda y te llene de orgullo!",
+    mantra: "La perseverancia es la madre de las obras maestras.",
+    tag: "Perseverancia & Arte",
+    icon: "✂️"
+  },
+  {
+    title: "✨ ¡Buenos días, {nombre}! Despliega tus alas creativas 🕊️",
+    body: "Hoy es una nueva oportunidad para innovar, para pulir técnicas y para aprender algo nuevo. ¡Afronta el día con curiosidad y alegría!",
+    mantra: "Aprender y mejorar cada día es la verdadera esencia del progreso.",
+    tag: "Innovación & Progreso",
+    icon: "✨"
+  },
+  {
+    title: "🎄 ¡Un abrazo cálido de inicio de jornada, {nombre}! 💖",
+    body: "En estas fechas tan movidas, queremos que sientas el respaldo y el aprecio de todo Creaciones JJ. ¡Juntos hacemos posible lo imposible!",
+    mantra: "La calidez humana es lo que convierte a un equipo en una familia.",
+    tag: "Calidez & Familia",
+    icon: "🎄"
+  },
+  {
+    title: "💎 ¡Tu atención al detalle es un superpoder, {nombre}! 🔍",
+    body: "Nada se te escapa: alineaciones perfectas, colores exactos y terminaciones pulcras. ¡Ese nivel de detalle es lo que nos distingue ante los clientes!",
+    mantra: "Hacer las cosas con esmero es tu mejor carta de presentación.",
+    tag: "Superpoder Detallista",
+    icon: "💎"
+  },
+  {
+    title: "☀️ ¡Buenos días, {nombre}! Que la luz del taller te inspire 🌻",
+    body: "Que cada minuto de tu turno sea agradable y productivo. Gracias por poner tu granito de arena para que este taller siga siendo el número uno.",
+    mantra: "Cada pequeño aporte hace inmenso el resultado final.",
+    tag: "Aporte Valioso",
+    icon: "☀️"
+  },
+  {
+    title: "🚀 ¡A volar alto con tus creaciones hoy, {nombre}! 🌟",
+    body: "Tus ideas y tu destreza no tienen techo. Inicia hoy con la mente lista para romper récords y crear cosas verdaderamente hermosas.",
+    mantra: "Cree en lo que haces y no habrá meta que no puedas alcanzar.",
+    tag: "Mente Imparable",
+    icon: "🚀"
+  },
+  {
+    title: "🌺 ¡La dulzura y el cariño se sienten en tu trabajo, {nombre}! 🌸",
+    body: "Los clientes sienten el amor con el que preparas cada detalle. Gracias por imprimir tanta ternura y profesionalismo en cada pedido.",
+    mantra: "El amor que das en tu trabajo vuelve a ti multiplicado.",
+    tag: "Amor & Ternura",
+    icon: "🌺"
+  },
+  {
+    title: "🎯 ¡Buenos días, {nombre}! Enfoque firme y sonrisa amplia 💫",
+    body: "Cuando te enfocas en dar lo mejor, el tiempo rinde y el cansancio disminuye. ¡Que tu jornada de hoy sea ligera, alegre y súper exitosa!",
+    mantra: "La sonrisa abre caminos y el enfoque asegura la victoria.",
+    tag: "Enfoque & Sonrisa",
+    icon: "🎯"
+  },
+  {
+    title: "⚡ ¡Tu dinamismo mueve montañas, {nombre}! 💥",
+    body: "Tu energía activa motiva a los que te rodean. Gracias por no bajar los brazos y mantener siempre el ritmo del taller arriba.",
+    mantra: "El entusiasmo es contagioso y transforma cualquier ambiente.",
+    tag: "Dinamismo Puro",
+    icon: "⚡"
+  },
+  {
+    title: "🏆 ¡Orgullo total de tenerte en Creaciones JJ, {nombre}! 🎖️",
+    body: "Personas con tu talento y compromiso son las que hacen posible que este negocio crezca día con día. ¡Gracias de corazón por todo lo que haces!",
+    mantra: "El verdadero valor de una empresa está en las personas que la construyen.",
+    tag: "Orgullo de Marca",
+    icon: "🏆"
+  },
+  {
+    title: "🎁 ¡Hoy es un día para agradecer tu trabajo, {nombre}! 💝",
+    body: "Antes de que comience el ajetreo del día, tómate este segundo para reconocer lo valioso/a que eres en este taller. ¡Que tengas un día maravilloso!",
+    mantra: "Reconocer tu propio valor es el primer paso para brillar aún más.",
+    tag: "Autovaloración & Éxito",
+    icon: "🎁"
+  },
+  {
+    title: "🌟 ¡Buenos días, {nombre}! Que tus manos sean bendecidas hoy ✨",
+    body: "Que cada tijerazo, cada pegado y cada trazo salgan con precisión divina. Tu trabajo honra a quienes confían en nosotros.",
+    mantra: "Manos que trabajan con amor reciben bendiciones en cada paso.",
+    tag: "Manos Bendecidas",
+    icon: "🌟"
+  },
+  {
+    title: "🔔 ¡Campanadas de éxito y productividad para ti, {nombre}! 🎄",
+    body: "Que este nuevo día de trabajo te traiga paz mental, pedidos que fluyan rápido y la satisfacción de saber que diste el 100%.",
+    mantra: "La paz mental es la mejor aliada de la productividad.",
+    tag: "Paz Mental & Éxito",
+    icon: "🔔"
+  },
+  {
+    title: "💎 ¡Tu sello artesanal no se compara con nada, {nombre}! 🎨",
+    body: "En una época donde todo se hace en serie, el valor de lo hecho a mano con dedicación como lo haces tú es irreemplazable. ¡Eres un/a verdadero/a artista!",
+    mantra: "Lo hecho a mano con amor tiene un alma que ninguna máquina puede igualar.",
+    tag: "Alma Artesanal",
+    icon: "💎"
+  },
+  {
+    title: "🌈 ¡Buenos días, {nombre}! A pintar el día de optimismo ☀️",
+    body: "Una actitud optimista resuelve la mitad de las tareas antes de empezar. Saluda a tus compañeros, respira profundo y ¡a disfrutar de tu talento!",
+    mantra: "El optimismo es la fe que conduce al logro.",
+    tag: "Optimismo Activo",
+    icon: "🌈"
+  },
+  {
+    title: "🔥 ¡Tu resiliencia y empuje son inspiradores, {nombre}! ⚡",
+    body: "No importa qué tan larga sea la lista de órdenes pendientes: con tu ritmo y tu serenidad siempre salimos victoriosos. ¡Gracias por estar ahí!",
+    mantra: "La paciencia y el ritmo constante vencen cualquier montaña de tareas.",
+    tag: "Resiliencia & Empuje",
+    icon: "🔥"
+  },
+  {
+    title: "🌸 ¡Que hoy florezcan nuevas ideas y soluciones, {nombre}! 🌿",
+    body: "Tu capacidad para innovar y encontrar mejores maneras de trabajar hace crecer a todo el equipo. ¡Ten un día lleno de descubrimientos gratos!",
+    mantra: "Siempre hay una manera más bonita y eficiente de hacer las cosas.",
+    tag: "Innovación Cotidiana",
+    icon: "🌸"
+  },
+  {
+    title: "🎉 ¡Hoy celebramos tu esfuerzo diario, {nombre}! 🥳",
+    body: "Este mensaje es un recordatorio de que tu esfuerzo diario no pasa desapercibido. Eres una pieza clave de este engranaje llamado Creaciones JJ.",
+    mantra: "Cada pieza del equipo es indispensable para que la melodía suene perfecta.",
+    tag: "Pieza Clave",
+    icon: "🎉"
+  },
+  {
+    title: "🎄 ¡Feliz inicio de jornada, {nombre}! A brillar con luz propia ✨",
+    body: "Que la magia de esta temporada te acompañe en cada orden que tomes hoy. Tu dedicación es nuestro mayor regalo. ¡A darle con todo!",
+    mantra: "Brilla con luz propia y contagiarás de entusiasmo a todos a tu alrededor.",
+    tag: "Luz Propia",
+    icon: "🎄"
+  }
+];
+
+function getTodayDateKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getDailyMotivationalMessage(workerName, dateStr) {
+  if (!DAILY_MOTIVATION_MESSAGES || !DAILY_MOTIVATION_MESSAGES.length) return null;
+  const N = DAILY_MOTIVATION_MESSAGES.length;
+  const prime = 17; // Coprimo con 65 (mcd(17,65)=1), ciclo hamiltoniano perfecto sin repetición mensual
+  
+  const raw = String(workerName || "Equipo").trim();
+  const first = raw.split(" ")[0];
+  const nombre = first ? (first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()) : "Equipo";
+  
+  let nameHash = 0;
+  for (let i = 0; i < nombre.length; i++) {
+    nameHash = ((nameHash * 31) + nombre.charCodeAt(i)) & 0x7fffffff;
+  }
+  
+  const parts = dateStr.split("-");
+  const year = parseInt(parts[0], 10) || 2026;
+  const month = (parseInt(parts[1], 10) || 1) - 1;
+  const day = parseInt(parts[2], 10) || 1;
+  const targetDate = new Date(year, month, day);
+  const startOfYear = new Date(year, 0, 1);
+  const dayOfYear = Math.floor((targetDate - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+  
+  let baseIndex = (((dayOfYear * prime) + (nameHash % N)) % N);
+  if (baseIndex < 0) baseIndex += N;
+  
+  // Garantía de no colisión en un mismo día entre compañeros (almacenamiento compartido)
+  const claimedKey = "jj_daily_claimed_msgs_" + dateStr;
+  let claimedToday = store.get(claimedKey, {});
+  if (typeof claimedToday !== "object" || claimedToday === null) claimedToday = {};
+  
+  // Historial personal reciente del trabajador (evita repeticiones en semanas/meses)
+  const historyKey = "jj_worker_msg_hist_" + nombre.toLowerCase();
+  let history = store.get(historyKey, []);
+  if (!Array.isArray(history)) history = [];
+  
+  let selectedIndex = baseIndex;
+  let attempts = 0;
+  while (attempts < N) {
+    const isClaimedByOther = claimedToday[selectedIndex] && claimedToday[selectedIndex] !== nombre;
+    const isSeenRecently = history.includes(selectedIndex) && attempts < (N - 15);
+    
+    if (!isClaimedByOther && !isSeenRecently) {
+      break;
+    }
+    selectedIndex = (selectedIndex + 1) % N;
+    attempts++;
+  }
+  
+  claimedToday[selectedIndex] = nombre;
+  store.set(claimedKey, claimedToday);
+  
+  if (!history.includes(selectedIndex)) {
+    history.push(selectedIndex);
+    if (history.length > 35) history.shift();
+    store.set(historyKey, history);
+  }
+  
+  const template = DAILY_MOTIVATION_MESSAGES[selectedIndex];
+  return {
+    index: selectedIndex,
+    title: template.title.replace(/\{nombre\}/g, nombre),
+    body: template.body.replace(/\{nombre\}/g, nombre),
+    mantra: template.mantra.replace(/\{nombre\}/g, nombre),
+    tag: template.tag,
+    icon: template.icon,
+    nombre: nombre
+  };
+}
+
+function checkAndShowDailyMotivation(force = false) {
+  if (!state.session || !state.session.name) return;
+  
+  const rawName = String(state.session.name).trim();
+  const firstName = rawName.split(" ")[0];
+  const nombre = firstName ? (firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()) : "Equipo";
+  const todayKey = getTodayDateKey();
+  
+  const storageSeenKey = "jj_daily_seen_" + nombre.toLowerCase() + "_" + todayKey;
+  const alreadySeen = store.get(storageSeenKey, false);
+  
+  if (alreadySeen && !force) {
+    console.log("Mensaje motivacional de hoy ya visto por " + nombre);
+    return;
+  }
+  
+  const msg = getDailyMotivationalMessage(nombre, todayKey);
+  if (!msg) return;
+  
+  renderDailyMotivationModal(msg);
+  store.set(storageSeenKey, true);
+}
+
+function renderDailyMotivationModal(msg) {
+  const backdrop = document.getElementById("jj-daily-motivation-backdrop");
+  if (!backdrop) return;
+  
+  const titleEl = document.getElementById("jjMotivTitle");
+  const bodyEl = document.getElementById("jjMotivBody");
+  const mantraEl = document.getElementById("jjMotivMantra");
+  const iconEl = document.getElementById("jjMotivIcon");
+  const tagEl = document.getElementById("jjMotivTag");
+  
+  if (titleEl) titleEl.textContent = msg.title;
+  if (bodyEl) bodyEl.textContent = msg.body;
+  if (mantraEl) mantraEl.textContent = msg.mantra;
+  if (iconEl) iconEl.textContent = msg.icon || "✨";
+  if (tagEl) tagEl.textContent = msg.tag || "Detalle Creaciones JJ";
+  
+  backdrop.classList.remove("hidden");
+  backdrop.setAttribute("aria-hidden", "false");
+}
+
+function closeDailyMotivationModal() {
+  const backdrop = document.getElementById("jj-daily-motivation-backdrop");
+  if (backdrop) {
+    backdrop.classList.add("hidden");
+    backdrop.setAttribute("aria-hidden", "true");
+  }
+}
+
+window.showDailyMotivationModal = checkAndShowDailyMotivation;
+window.closeDailyMotivationModal = closeDailyMotivationModal;
