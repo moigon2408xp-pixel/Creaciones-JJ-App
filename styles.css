@@ -216,12 +216,12 @@ body {
 .login-logo {
   width: 140px;
   height: 140px;
-  object-fit: contain;
+  object-fit: cover;
   border-radius: 50%;
-  border: 3px solid rgba(255,255,255,.15);
-  box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 0 6px rgba(26,188,156,.15);
+  border: 3px solid rgba(255,255,255,.2);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 0 4px rgba(26,188,156,.2);
   background: #1e293b;
-  padding: 6px;
+  padding: 0;
 }
 
 /* Nombre y slogan de la empresa */
@@ -3160,15 +3160,15 @@ html, body {
 
 .christmas-santa-hat {
   position: absolute;
-  top: -24px;
-  right: -12px;
-  width: 80px;
+  top: -8px;
+  right: 10px;
+  width: 78px;
   height: 68px;
   pointer-events: none;
   z-index: 10;
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
   animation: santaHatFloat 4s ease-in-out infinite;
-  transform-origin: bottom left;
+  transform-origin: 35% 85%;
 }
 
 .jj-brand-logo-wrap {
@@ -3182,23 +3182,23 @@ html, body {
 
 .christmas-santa-hat-sm {
   position: absolute;
-  top: -8px;
-  right: -5px;
-  width: 22px;
-  height: 19px;
+  top: -4px;
+  right: 0px;
+  width: 21px;
+  height: 18px;
   pointer-events: none;
   z-index: 10;
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
   animation: santaHatFloat 4s ease-in-out infinite;
-  transform-origin: bottom left;
+  transform-origin: 35% 85%;
 }
 
 @keyframes santaHatFloat {
   0%, 100% {
-    transform: rotate(0deg) translateY(0) scale(1);
+    transform: rotate(0deg) scale(1);
   }
   50% {
-    transform: rotate(2.5deg) translateY(-2px) scale(1.02);
+    transform: rotate(2deg) scale(1.02);
   }
 }
 
@@ -3208,10 +3208,10 @@ html, body {
     height: 110px !important;
   }
   .christmas-santa-hat {
-    top: -19px !important;
-    right: -9px !important;
-    width: 64px !important;
-    height: 55px !important;
+    top: -6px !important;
+    right: 7px !important;
+    width: 62px !important;
+    height: 54px !important;
   }
 }
 
