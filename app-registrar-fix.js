@@ -1353,6 +1353,11 @@ function orderCard(order, position) {
       <span>${escapeHtml(order.responsable)}</span>
       ${order.telefono ? `<span>·</span><span>📞 ${escapeHtml(order.telefono)}</span>` : ''}
     </div>
+    ${order.descripcion ? `
+      <div class="cc-desc-snippet" style="font-size:11.5px; color:var(--text-muted); background:rgba(0,0,0,0.03); border-left:3px solid var(--primary-color); padding:4px 8px; margin-top:4px; border-radius:4px; max-height:55px; overflow:hidden; text-overflow:ellipsis;">
+        ${escapeHtml(order.descripcion).replace(/\n/g, '<br/>')}
+      </div>
+    ` : ''}
     ${deadlineInterno ? `<div class="cc-delivery-warning">${deadlineInterno}</div>` : ''}
     ${order.notas ? `
       <div style="font-size:11px; color:#d97706; background:rgba(217,119,6,.1); border:1px solid rgba(217,119,6,.3); border-radius:6px; padding:4px 8px; margin-top:4px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; word-break:break-word; width:100%; box-sizing:border-box;">
@@ -5694,31 +5699,51 @@ function detail(order) {
     `;
   }
 
-  // AVISO / MODAL LIMITANTE DE PRIMERA APERTURA (Para TODOS los trabajadores y Managers como Sra. Julieta)
+  // AVISO / MODAL LIMITANTE DE PRIMERA APERTURA (Compacto y no invasivo para Managers)
   let gatekeeperBanner = '';
   if (active(order) && (order.estado === 'Pendiente' || !order.inicioProduccion)) {
-    gatekeeperBanner = `
-      <div style="background:linear-gradient(135deg, rgba(14,165,233,0.1), rgba(139,92,246,0.1)); border:2px solid #0ea5e9; border-radius:14px; padding:14px; margin-bottom:16px;">
-        <div style="font-weight:900; color:#0284c7; font-size:14px; display:flex; align-items:center; gap:8px;">
-          <i class="fas fa-bolt" style="color:#0ea5e9;"></i> PASO OBLIGATORIO: ¿EN QUÉ FASE COMENZARÁS ESTE PEDIDO?
-        </div>
-        <p style="font-size:12px; color:var(--text-muted); margin:6px 0 12px 0;">
-          Para registrar las métricas exactas de tiempo y evitar confusiones en el taller, indica la etapa en que iniciarás:
-        </p>
-        <div class="gatekeeper-card-grid">
-          <div class="gatekeeper-choice-card diseno" onclick="setOrderPhase('${escapeHtml(order.id)}', 'diseno')">
-            <i class="fas fa-palette" style="font-size:1.8rem; color:#8b5cf6;"></i>
-            <strong style="color:#7c3aed; font-size:13px;">Fase de Diseño Gráfico</strong>
-            <span style="font-size:11px; color:var(--text-muted);">Elaboración previa en PC. No consume tiempo de mesa de producción.</span>
+    if (isLead()) {
+      gatekeeperBanner = `
+        <div style="background:rgba(14,165,233,0.08); border:1.5px solid #0284c7; border-radius:10px; padding:10px 14px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-bolt" style="color:#0ea5e9; font-size:15px;"></i>
+            <span style="font-weight:800; font-size:12.5px; color:var(--text-main);">Fase de Inicio Rápido:</span>
+            <span style="font-size:11.5px; color:var(--text-muted);">(Selecciona fase para arrancar)</span>
           </div>
-          <div class="gatekeeper-choice-card produccion" onclick="setOrderPhase('${escapeHtml(order.id)}', 'produccion')">
-            <i class="fas fa-tools" style="font-size:1.8rem; color:#10b981;"></i>
-            <strong style="color:#059669; font-size:13px;">Fase de Producción en Mesa</strong>
-            <span style="font-size:11px; color:var(--text-muted);">Corte, armado, sublimación, stickers. ⏱️ <strong>Inicia cronómetro en vivo</strong>.</span>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="secondary-button" onclick="setOrderPhase('${escapeHtml(order.id)}', 'diseno')" style="background:#7c3aed; color:white; border:none; padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; cursor:pointer;">
+              🎨 Iniciar Diseño
+            </button>
+            <button type="button" class="secondary-button" onclick="setOrderPhase('${escapeHtml(order.id)}', 'produccion')" style="background:#059669; color:white; border:none; padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; cursor:pointer;">
+              🛠️ Iniciar Mesa
+            </button>
           </div>
         </div>
-      </div>
-    `;
+      `;
+    } else {
+      gatekeeperBanner = `
+        <div style="background:linear-gradient(135deg, rgba(14,165,233,0.1), rgba(139,92,246,0.1)); border:2px solid #0ea5e9; border-radius:14px; padding:14px; margin-bottom:16px;">
+          <div style="font-weight:900; color:#0284c7; font-size:14px; display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-bolt" style="color:#0ea5e9;"></i> PASO OBLIGATORIO: ¿EN QUÉ FASE COMENZARÁS ESTE PEDIDO?
+          </div>
+          <p style="font-size:12px; color:var(--text-muted); margin:6px 0 12px 0;">
+            Para registrar las métricas exactas de tiempo y evitar confusiones en el taller, indica la etapa en que iniciarás:
+          </p>
+          <div class="gatekeeper-card-grid">
+            <div class="gatekeeper-choice-card diseno" onclick="setOrderPhase('${escapeHtml(order.id)}', 'diseno')">
+              <i class="fas fa-palette" style="font-size:1.8rem; color:#8b5cf6;"></i>
+              <strong style="color:#7c3aed; font-size:13px;">Fase de Diseño Gráfico</strong>
+              <span style="font-size:11px; color:var(--text-muted);">Elaboración previa en PC. No consume tiempo de mesa de producción.</span>
+            </div>
+            <div class="gatekeeper-choice-card produccion" onclick="setOrderPhase('${escapeHtml(order.id)}', 'produccion')">
+              <i class="fas fa-tools" style="font-size:1.8rem; color:#10b981;"></i>
+              <strong style="color:#059669; font-size:13px;">Fase de Producción en Mesa</strong>
+              <span style="font-size:11px; color:var(--text-muted);">Corte, armado, sublimación, stickers. ⏱️ <strong>Inicia cronómetro en vivo</strong>.</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
   }
 
   // Renderizado de Sub-Ítems / Lista de Trabajos dentro del Pedido
@@ -5948,9 +5973,16 @@ function detail(order) {
         </div>
       `}
       
-      <div style="display:flex; flex-direction:column; gap:4px; border-bottom:1px dashed var(--border-color); padding-bottom:6px;">
-        <span style="font-weight:700; color:var(--text-muted); font-size:12px;">DESCRIPCIÓN / MEDIDAS:</span>
-        <p style="font-size:14px; background:var(--bg-main); padding:8px; border-radius:6px; color:var(--text-main);">${escapeHtml(order.descripcion || "Sin descripción")}</p>
+      <div style="display:flex; flex-direction:column; gap:6px; border-bottom:1px dashed var(--border-color); padding-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:800; color:var(--text-muted); font-size:12px; display:flex; align-items:center; gap:6px;">
+            📝 DESCRIPCIÓN Y ESPECIFICACIONES:
+          </span>
+          <button type="button" class="secondary-button" onclick="window.openEditOrderDescriptionModal('${escapeHtml(order.id)}')" style="padding:3px 8px; font-size:11px; border-radius:6px; background:var(--bg-card); border:1px solid var(--border-color); cursor:pointer;">
+            ✏️ Editar Descripción
+          </button>
+        </div>
+        <div class="order-desc-multiline order-desc-box" style="font-size:13.5px; background:var(--bg-main); padding:10px 12px; border-radius:8px; color:var(--text-main); border:1px solid var(--border-color);">${order.descripcion ? escapeHtml(order.descripcion).replace(/\n/g, '<br/>') : '<em style="color:var(--text-muted);">Sin descripción registrada</em>'}</div>
       </div>
       
       <div style="margin-top:6px; border-bottom:1px dashed var(--border-color); padding-bottom:8px;">
@@ -6003,15 +6035,21 @@ function detail(order) {
         </div>
       </div>
     </div>
-    ${rawPhone ? `<div class="actions" style="margin-top:16px;"><button type="button" class="secondary-button" style="background:#25D366; color:white; text-align:center; display:block; width:100%; font-weight:bold; padding:10px; border:none;" data-action="notify-wa-corporate" data-id="${escapeHtml(order.id)}" data-phone="${escapeHtml(order.telefono)}" data-client="${escapeHtml(order.cliente)}" data-type="${escapeHtml(order.tipo)}" data-motivo="${escapeHtml(order.motivo || '')}">📲 Notificar por WhatsApp</button></div>` : ""}
-    ${isLead() ? `
-      <div class="actions" style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-        ${!active(order) ? `<button class="secondary-button" style="background:var(--primary-color); color:white; border:none; flex:1;" data-action="reopen-order" data-id="${escapeHtml(order.id)}">🔄 Reabrir Proyecto</button>` : ''}
-        ${order.estado !== "Entregado" ? `<button class="secondary-button" style="background:var(--success-color); color:white; border:none; flex:1;" data-action="mark-delivered" data-id="${escapeHtml(order.id)}">📦 Marcar Entregado</button>` : ''}
-        <button class="secondary-button" style="background:#0ea5e9; color:white; border:none; flex:1;" data-action="add-evidence-photos" data-id="${escapeHtml(order.id)}">📷 Añadir Fotos de Evidencia</button>
-        <button class="secondary-button" style="background:#d32f2f; color:white; width:100%; border:none;" data-action="delete-order" data-id="${escapeHtml(order.id)}">🗑️ Eliminar Pedido del Sistema</button>
-      </div>
-    ` : ""}
+    <div class="modal-order-actions-wrap" style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:14px; display:flex; flex-direction:column; gap:8px;">
+      ${rawPhone ? `
+        <button type="button" class="secondary-button" style="background:#25D366; color:white; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; width:100%; font-weight:800; font-size:13px; padding:10px 14px; border:none; border-radius:8px; box-shadow:0 2px 6px rgba(37,211,102,0.25); cursor:pointer;" data-action="notify-wa-corporate" data-id="${escapeHtml(order.id)}" data-phone="${escapeHtml(order.telefono)}" data-client="${escapeHtml(order.cliente)}" data-type="${escapeHtml(order.tipo)}" data-motivo="${escapeHtml(order.motivo || '')}">
+          <i class="fab fa-whatsapp" style="font-size:16px;"></i> Notificar por WhatsApp al Cliente
+        </button>
+      ` : ""}
+      ${isLead() ? `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px;">
+          ${!active(order) ? `<button class="secondary-button" style="background:var(--primary-color); color:white; border:none; padding:8px 10px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer;" data-action="reopen-order" data-id="${escapeHtml(order.id)}">🔄 Reabrir</button>` : ''}
+          ${order.estado !== "Entregado" ? `<button class="secondary-button" style="background:var(--success-color); color:white; border:none; padding:8px 10px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer;" data-action="mark-delivered" data-id="${escapeHtml(order.id)}">📦 Entregado</button>` : ''}
+          <button class="secondary-button" style="background:#0ea5e9; color:white; border:none; padding:8px 10px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer;" data-action="add-evidence-photos" data-id="${escapeHtml(order.id)}">📷 Evidencia</button>
+          <button class="secondary-button" style="background:#ef4444; color:white; border:none; padding:8px 10px; font-size:12px; font-weight:700; border-radius:8px; cursor:pointer;" data-action="delete-order" data-id="${escapeHtml(order.id)}">🗑️ Eliminar</button>
+        </div>
+      ` : ""}
+    </div>
   `);
   
   $("#status-change-select")?.addEventListener("change", async (e) => {
@@ -6070,6 +6108,71 @@ function detail(order) {
     }
   });
 }
+
+window.openEditOrderDescriptionModal = function(orderId) {
+  const allOrders = [...(state.data?.allOrders || []), ...(state.data?.myOrders || []), ...(state.data?.finishedOrders || []), ...(state.orders || [])];
+  const order = allOrders.find(o => String(o.id).trim() === String(orderId).trim());
+  if (!order) {
+    alert("No se encontró el pedido solicitado.");
+    return;
+  }
+  
+  const currentDesc = order.descripcion || '';
+  
+  if (typeof Swal !== 'undefined') {
+    Swal.fire({
+      title: 'Editar Descripción / Especificaciones',
+      html: `
+        <div style="text-align:left; font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+          💡 Los saltos de línea (<kbd>Enter</kbd>) se guardarán tal cual estilo WhatsApp.
+        </div>
+        <textarea id="swal-edit-desc" style="width:100%; min-height:150px; padding:10px; font-family:inherit; font-size:13.5px; border-radius:8px; border:1.5px solid #0284c7; box-sizing:border-box; resize:vertical; line-height:1.5;">${escapeHtml(currentDesc)}</textarea>
+      `,
+      showCancelButton: true,
+      confirmButtonText: '💾 Guardar Cambios',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0284c7',
+      focusConfirm: false,
+      preConfirm: () => {
+        const val = document.getElementById('swal-edit-desc')?.value;
+        return val !== undefined ? val : '';
+      }
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        const newDesc = result.value.trim();
+        try {
+          await api("profile_update_order", {
+            id: order.id,
+            user: state.session?.name || "Manager",
+            changes: { descripcion: newDesc }
+          });
+          order.descripcion = newDesc;
+          allOrders.filter(o => String(o.id).trim() === String(order.id).trim()).forEach(o => { o.descripcion = newDesc; });
+          showToast('Descripción actualizada con éxito.');
+          detail(order);
+          render();
+        } catch(err) {
+          Swal.fire('Error', 'No se pudo guardar la descripción: ' + err.message, 'error');
+        }
+      }
+    });
+  } else {
+    const newDesc = prompt("Modifica la descripción del pedido (se respetan saltos de línea):", currentDesc);
+    if (newDesc !== null) {
+      api("profile_update_order", {
+        id: order.id,
+        user: state.session?.name || "Manager",
+        changes: { descripcion: newDesc.trim() }
+      }).then(() => {
+        order.descripcion = newDesc.trim();
+        allOrders.filter(o => String(o.id).trim() === String(order.id).trim()).forEach(o => { o.descripcion = newDesc.trim(); });
+        showToast('Descripción actualizada con éxito.');
+        detail(order);
+        render();
+      }).catch(err => alert("Error: " + err.message));
+    }
+  }
+};
 
 window.saveOrderCost = async function(orderId) {
   const input = document.getElementById("order-cost-input");
