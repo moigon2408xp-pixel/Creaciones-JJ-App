@@ -27,7 +27,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <link rel="stylesheet" href="./styles.css?v=98"/>
+  <link rel="stylesheet" href="./styles.css?v=99"/>
   <title>Creaciones JJ – Prioridad Producción</title>
   <!-- CSS crítico: oculta workspace ANTES de que corra cualquier JS -->
   <style>
@@ -50,58 +50,69 @@
       <!-- Logo de la empresa con Gorrito Navideño Adaptado al Contorno Circular -->
       <div class="login-logo-wrapper">
         <span class="christmas-santa-hat" aria-hidden="true">
-          <svg viewBox="0 0 100 85" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="0 0 100 85" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow: visible;">
             <defs>
-              <linearGradient id="santaRedGrad" x1="15%" y1="10%" x2="85%" y2="85%">
+              <linearGradient id="solidSantaRed" x1="20%" y1="10%" x2="80%" y2="90%">
                 <stop offset="0%" stop-color="#ff3b5c"/>
-                <stop offset="35%" stop-color="#e11d48"/>
-                <stop offset="75%" stop-color="#be123c"/>
+                <stop offset="25%" stop-color="#e11d48"/>
+                <stop offset="70%" stop-color="#be123c"/>
                 <stop offset="100%" stop-color="#881337"/>
               </linearGradient>
-              <linearGradient id="brimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#ffffff"/>
-                <stop offset="80%" stop-color="#f1f5f9"/>
-                <stop offset="100%" stop-color="#cbd5e1"/>
-              </linearGradient>
-              <linearGradient id="pomGrad" x1="20%" y1="20%" x2="80%" y2="80%">
+              <linearGradient id="solidFluffyWhite" x1="0%" y1="0%" x2="0%" y2="100%">
                 <stop offset="0%" stop-color="#ffffff"/>
                 <stop offset="75%" stop-color="#f8fafc"/>
                 <stop offset="100%" stop-color="#cbd5e1"/>
               </linearGradient>
-              <filter id="hatShadow" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.35"/>
+              <filter id="solidHatShadow" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.45"/>
               </filter>
             </defs>
 
-            <!-- Cuerpo Rojo del Gorro curvado hacia la derecha -->
-            <path d="M 22 56 C 21 38 35 15 54 13 C 65 12 77 17 84 27 C 89 33 92 41 90 48 C 88 52 82 52 78 50 C 74 44 72 32 64 25 C 56 18 40 25 34 38 C 30 46 26 53 22 56 Z" 
-                  fill="url(#santaRedGrad)"/>
-            
-            <!-- Sombra interior en el pliegue del gorro -->
-            <path d="M 54 13 C 65 12 77 17 84 27 C 88 33 90 41 89 47 C 85 43 80 32 72 26 C 65 21 58 17 54 13 Z" 
-                  fill="#700e28" opacity="0.35"/>
-                  
-            <!-- Brillo de iluminación en la cresta izquierda -->
-            <path d="M 27 50 C 27 38 36 22 48 16 C 45 19 33 30 31 51 Z" 
-                  fill="#ffffff" opacity="0.25"/>
+            <!-- Cuerpo Rojo del Gorro (100% Sólido y Relleno) -->
+            <path d="M 18 56 
+                     C 18 34 32 14 54 8 
+                     C 68 5 82 12 90 22 
+                     C 96 30 96 42 94 48 
+                     L 76 52 
+                     C 56 56 36 58 18 56 Z" 
+                  fill="url(#solidSantaRed)"/>
+
+            <!-- Sombra interior en el doblez de la punta -->
+            <path d="M 54 8 C 68 5 82 12 90 22 C 96 30 96 42 94 48 C 88 44 80 32 70 24 C 62 18 56 12 54 8 Z" 
+                  fill="#700e28" opacity="0.45"/>
+
+            <!-- Reflejo suave en la curva izquierda -->
+            <path d="M 24 50 C 24 36 34 20 48 12" 
+                  stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
 
             <!-- Pompón blanco esponjoso cayendo a la derecha -->
-            <g filter="url(#hatShadow)">
-              <circle cx="93" cy="50" r="8" fill="url(#pomGrad)"/>
-              <circle cx="89" cy="46" r="5" fill="url(#pomGrad)"/>
-              <circle cx="97" cy="47" r="5" fill="url(#pomGrad)"/>
-              <circle cx="95" cy="54" r="5" fill="url(#pomGrad)"/>
+            <g filter="url(#solidHatShadow)">
+              <circle cx="94" cy="48" r="9" fill="url(#solidFluffyWhite)"/>
+              <circle cx="89" cy="44" r="6" fill="url(#solidFluffyWhite)"/>
+              <circle cx="98" cy="45" r="5.5" fill="url(#solidFluffyWhite)"/>
+              <circle cx="96" cy="53" r="5.5" fill="url(#solidFluffyWhite)"/>
+              <circle cx="90" cy="52" r="5" fill="url(#solidFluffyWhite)"/>
             </g>
 
-            <!-- Borde / Ribete blanco curvado que abraza el contorno circular del logo -->
-            <g filter="url(#hatShadow)">
-              <path d="M 14 62 C 12 57 17 53 23 55 C 27 51 35 50 41 53 C 47 48 56 47 62 50 C 68 46 76 47 80 50 C 85 54 83 60 79 63 C 74 67 67 65 61 63 C 55 67 45 68 39 66 C 33 69 25 69 19 66 C 15 66 12 65 14 62 Z" 
-                    fill="url(#brimGrad)"/>
-              <ellipse cx="23" cy="59" rx="6.5" ry="5.5" fill="url(#brimGrad)"/>
-              <ellipse cx="36" cy="58" rx="7.5" ry="6" fill="url(#brimGrad)"/>
-              <ellipse cx="51" cy="56" rx="8" ry="6" fill="url(#brimGrad)"/>
-              <ellipse cx="66" cy="55" rx="7.5" ry="5.5" fill="url(#brimGrad)"/>
-              <ellipse cx="77" cy="55" rx="6.5" ry="5" fill="url(#brimGrad)"/>
+            <!-- Borde / Ribete blanco afelpado que corona el logo -->
+            <g filter="url(#solidHatShadow)">
+              <path d="M 10 58 
+                       C 8 52 14 47 21 49 
+                       C 26 44 35 43 42 46 
+                       C 49 41 59 40 66 43 
+                       C 73 39 82 40 86 44 
+                       C 90 49 88 56 83 59 
+                       C 79 65 71 62 64 60 
+                       C 57 65 45 66 38 63 
+                       C 31 67 22 66 16 63 
+                       C 10 61 8 60 10 58 Z" 
+                    fill="url(#solidFluffyWhite)"/>
+              <circle cx="16" cy="56" r="7" fill="url(#solidFluffyWhite)"/>
+              <circle cx="28" cy="54" r="8" fill="url(#solidFluffyWhite)"/>
+              <circle cx="43" cy="52" r="8.5" fill="url(#solidFluffyWhite)"/>
+              <circle cx="58" cy="50" r="8.5" fill="url(#solidFluffyWhite)"/>
+              <circle cx="72" cy="50" r="8" fill="url(#solidFluffyWhite)"/>
+              <circle cx="82" cy="52" r="7" fill="url(#solidFluffyWhite)"/>
             </g>
           </svg>
         </span>
@@ -162,22 +173,24 @@
         <a class="jj-header-brand" onclick="navigate('modules')">
           <div class="jj-brand-logo-wrap">
             <span class="christmas-santa-hat-sm" aria-hidden="true">
-              <svg viewBox="0 0 100 85" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg viewBox="0 0 100 85" fill="none" xmlns="http://www.w3.org/2000/svg" style="overflow: visible;">
                 <defs>
-                  <linearGradient id="santaRedGradSm" x1="15%" y1="10%" x2="85%" y2="85%">
+                  <linearGradient id="solidRedSm" x1="20%" y1="10%" x2="80%" y2="90%">
                     <stop offset="0%" stop-color="#ff3b5c"/>
-                    <stop offset="35%" stop-color="#e11d48"/>
+                    <stop offset="25%" stop-color="#e11d48"/>
+                    <stop offset="70%" stop-color="#be123c"/>
                     <stop offset="100%" stop-color="#881337"/>
                   </linearGradient>
                 </defs>
-                <path d="M 22 56 C 21 38 35 15 54 13 C 65 12 77 17 84 27 C 89 33 92 41 90 48 C 88 52 82 52 78 50 C 74 44 72 32 64 25 C 56 18 40 25 34 38 C 30 46 26 53 22 56 Z" fill="url(#santaRedGradSm)"/>
-                <circle cx="93" cy="50" r="9" fill="#ffffff"/>
-                <path d="M 14 62 C 16 52 76 46 80 52 C 84 57 74 65 61 63 C 45 68 25 68 14 62 Z" fill="#ffffff"/>
-                <ellipse cx="23" cy="59" rx="6.5" ry="5.5" fill="#ffffff"/>
-                <ellipse cx="36" cy="58" rx="7.5" ry="6" fill="#ffffff"/>
-                <ellipse cx="51" cy="56" rx="8" ry="6" fill="#ffffff"/>
-                <ellipse cx="66" cy="55" rx="7.5" ry="5.5" fill="#ffffff"/>
-                <ellipse cx="77" cy="55" rx="6.5" ry="5" fill="#ffffff"/>
+                <path d="M 18 56 C 18 34 32 14 54 8 C 68 5 82 12 90 22 C 96 30 96 42 94 48 L 76 52 C 56 56 36 58 18 56 Z" fill="url(#solidRedSm)"/>
+                <circle cx="94" cy="48" r="9" fill="#ffffff"/>
+                <path d="M 10 58 C 10 46 86 40 86 46 C 86 58 10 66 10 58 Z" fill="#ffffff"/>
+                <circle cx="16" cy="56" r="7" fill="#ffffff"/>
+                <circle cx="28" cy="54" r="8" fill="#ffffff"/>
+                <circle cx="43" cy="52" r="8.5" fill="#ffffff"/>
+                <circle cx="58" cy="50" r="8.5" fill="#ffffff"/>
+                <circle cx="72" cy="50" r="8" fill="#ffffff"/>
+                <circle cx="82" cy="52" r="7" fill="#ffffff"/>
               </svg>
             </span>
             <img src="./logo_creaciones_jj.png" class="jj-brand-logo-img" alt="Creaciones JJ">
@@ -390,13 +403,13 @@
   </div>
 
   <script src="./firebase-config.js"></script>
-  <script src="./app-registrar-fix.js?v=98"></script>
+  <script src="./app-registrar-fix.js?v=99"></script>
 
   <script>
     /* ---- PWA y Registro de Service Worker para PC / Móvil ---- */
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('./sw.js?v=5').then(function(reg) {
+        navigator.serviceWorker.register('./sw.js?v=6').then(function(reg) {
           console.log('SW Creaciones JJ registrado:', reg.scope);
         }).catch(function(err) {
           console.warn('Error al registrar SW:', err);
